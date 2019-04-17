@@ -10,6 +10,7 @@ from pathlib import Path
 import itertools
 import numpy as np
 import pandas as pd
+from abc import ABC, abstractmethod
 
 import cv2
 from skimage.io import imsave
@@ -45,25 +46,27 @@ LOSSES = allowed_parameters.LOSSES
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
 
 
-class AbstractPipeline:
-
-    def __init__(self):
+class AbstractPipeline(ABC):
+    
+    @abstractmethod
+    def get_dataloaders(self, *args, **kwargs):
         pass
 
-    def get_dataloaders(self, *args, **kwargs):
-        raise NotImplementedError("Method get_dataloaders isn't implemented")
-
+    @abstractmethod
     def get_model(self, *args, **kwargs):
-        raise NotImplementedError("Method get_model isn't implemented")
+        pass
 
+    @abstractmethod
     def train(self, *args, **kwargs):
-        raise NotImplementedError("Method train isn't implemented")
+        pass
 
+    @abstractmethod
     def validation(self, *args, **kwargs):
-        raise NotImplementedError("Method validation isn't implemented")
+        pass
 
+    @abstractmethod
     def predict(self, *args, **kwargs):
-        raise NotImplementedError("Method predict isn't implemented")
+        pass
 
 
 class Pipeline(AbstractPipeline):
