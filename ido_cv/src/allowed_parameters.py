@@ -128,8 +128,8 @@ MODELS = {
                     'mid_block': None,
                     'dilate_depth': 1,
                     'gau': False,
-                    'hypercolumn': False,
-                    'se_decoder': True,
+                    'hypercolumn': True,
+                    'se_decoder': False,
                 }
             },
             'deeplabv3': {

@@ -8,14 +8,13 @@ import gc
 import copy
 from pathlib import Path
 import itertools
-import numpy as np
-import pandas as pd
 from abc import ABC, abstractmethod
 
 import cv2
+import numpy as np
+import pandas as pd
 from skimage.io import imsave
 import matplotlib.pyplot as plt
-
 import torch
 import torch.optim as optimizers
 from torch.utils.data import DataLoader
@@ -47,7 +46,10 @@ OPTIMIZERS = allowed_parameters.OPTIMIZERS
 
 
 class AbstractPipeline(ABC):
-    
+
+    def __init__(self):
+        pass
+
     @abstractmethod
     def get_dataloaders(self, *args, **kwargs):
         pass
@@ -137,7 +139,7 @@ class Pipeline(AbstractPipeline):
         self.random_seed = random_seed
         self.time = time
 
-    def get_dataloaders(self, data_file=None, path_to_dataset=None, path_to_labels=None, batch_size=1, is_train=True,
+    def get_dataloaders(self, path_to_dataset=None, data_file=None, batch_size=1, is_train=True,
                         workers=1, shuffle=False, augs=False):
         """ Function to make train data loaders
 
@@ -148,6 +150,7 @@ class Pipeline(AbstractPipeline):
         :param is_train: Flag to specify dataloader type (train or test)
         :param workers: Number of multithread workers
         :param shuffle: Flag for random shuffling train dataloader samples
+        :param augs: Flag to add augmentations
         :return:
         """
         if augs:
@@ -156,11 +159,12 @@ class Pipeline(AbstractPipeline):
             augmentations = None
         if self.task == 'detection':
             dataset_class = RetinaDataset(root=path_to_dataset,
-                                          labels_file=path_to_labels,
+                                          labels_file=os.path.join(path_to_dataset, 'labels.csv'),
                                           initial_size=self.img_size_orig,
                                           model_input_size=self.img_size_target,
                                           train=is_train,
                                           augmentations=augmentations)
+            # dataset_class = None
         elif self.task == 'segmentation':
             if self.mode == 'binary':
                 dataset_class = BinSegDataset(
@@ -214,8 +218,8 @@ class Pipeline(AbstractPipeline):
             if model_parameters is None:
                 model_parameters = MODELS[self.task][self.mode][model_name]['default_parameters']
                 print(
-                    f'Pretrained weights are not provided. Train process runs with defauld {model_name} parameters:\n'
-                    f'{model_parameters}'
+                    f'Pretrained weights are not provided. '
+                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
                 )
         else:
             path_to_model = Path(path_to_weights).parents[1]
@@ -226,6 +230,10 @@ class Pipeline(AbstractPipeline):
                 )
             cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
             model_parameters = cfg_parser.parameters['model_parameters']
+
+        print(
+            f'Train process runs with {model_name} parameters: \n{model_parameters}'
+        )
 
         # Get model class
         model_class = MODELS[self.task][self.mode][model_name]['class']
@@ -608,7 +616,7 @@ class Pipeline(AbstractPipeline):
             print(string)
         return out_metrics
 
-    def predict(self, model, dataloader, cls_thresh=None, nms_thresh=None, save=False, save_dir=''):
+    def predict(self, model, dataloader, save=False, save_dir='', **kwargs):
         """ Function to make predictions
 
         :param model: Input model
@@ -643,6 +651,8 @@ class Pipeline(AbstractPipeline):
 
                 # Get predictions for detection task
                 if self.task == 'detection':
+                    cls_thresh = kwargs['cls_thresh']
+                    nms_thresh = kwargs['nms_thresh']
                     # TODO Make this work with different models (currently - only RetinaNet)
                     outputs = model(inputs)
                     encoder = DataEncoder(input_size=self.img_size_target)
@@ -702,10 +712,12 @@ class Pipeline(AbstractPipeline):
                         outputs = model(inputs)
                         outputs = torch.softmax(outputs, dim=1)
                         out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1)
-                        out_masks = np.asarray(
-                            [unpad(img, img_shape=self.img_size_orig) for img in out_masks],
-                            dtype=np.float32
-                        )
+                        out_masks = np.asarray([
+                            unpad(
+                                resize(img, size=self.img_size_orig[1]),
+                                img_shape=self.img_size_orig)
+                            for img in out_masks
+                        ], dtype=np.float32)
                         if predictions['masks'] is None:
                             predictions['masks'] = out_masks
                         else:
@@ -751,11 +763,14 @@ class Pipeline(AbstractPipeline):
             print("Predictions saved. Path: {}".format(csv_path))
         return pred_df
 
-    def postprocessing(self, pred_df, threshold=0., hole_size=None, obj_size=None, save=False, save_dir=''):
+    def postprocessing(self, pred_df: pd.DataFrame, threshold: float = 0., hole_size: int = None,
+                       obj_size: int = None, save: bool = False, save_dir: str = ''):
         """ Function for predicted data postprocessing
 
         :param pred_df: Dataset woth predicted images and masks
         :param threshold: Binarization thresholds
+        :param hole_size: Minimum hole size to fill
+        :param obj_size: Minimum obj size
         :param save: Flag to save results
         :param save_dir: Save directory
         :return:
@@ -784,6 +799,7 @@ class Pipeline(AbstractPipeline):
                 postproc_masks = []
                 masks = np.copy(pred_df['masks'].values)
                 for mask in masks:
+                    mask = mask > 0.99
                     mask = np.argmax(mask, axis=-1)
                     # postproc_mask = postproc.delete_small_instances(mask,
                     #                                                 obj_size=obj_size,

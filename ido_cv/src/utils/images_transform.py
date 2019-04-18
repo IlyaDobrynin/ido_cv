@@ -66,7 +66,7 @@ def unpad(img, boxes=None, img_shape=(45, 256)):
     return out_image
 
 
-def resize(img, boxes=None, size=256, max_size=1000, interpolation=cv2.INTER_AREA):
+def resize(img, boxes=None, size=256, max_size=10000, interpolation=cv2.INTER_AREA):
     """ Resize the input PIL image to the given size.
 
     Args:
@@ -95,7 +95,7 @@ def resize(img, boxes=None, size=256, max_size=1000, interpolation=cv2.INTER_ARE
         sw = float(ow) / w
         sh = float(oh) / h
 
-    out_image = cv2.resize(img, (ow, oh), interpolation=cv2.INTER_AREA)
+    out_image = cv2.resize(img, (ow, oh), interpolation=interpolation)
     if boxes is not None:
         out_boxes = boxes * torch.Tensor([sw, sh, sw, sh])
         return out_image, out_boxes

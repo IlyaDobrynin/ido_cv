@@ -4,6 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
+from ....utils.get_weights import load_seafile_url
 
 __all__ = ['resnext50', 'resnext101', 'resnext101_64', 'resnext152']
 
@@ -22,8 +23,7 @@ pretrain_settings = {
     },
     'se_resnext_50': {
         'imagenet': {
-            'url': '/home/ido-mts/.torch/models/se_resnext50.pth',
-            # 'url': '/home/ilyado/.torch/models/se_resnext50.pth',
+            'url': 'http://213.108.129.195:8000/f/12f7db0c38/?raw=1',
             'num_classes': 1000
         }
     }
@@ -262,20 +262,18 @@ def resnext152(num_classes=1000):
 def se_resnext50(num_classes=1000, pretrained='imagenet', requires_grad=True):
     """Constructs a SE-ResNeXt-50 model."""
     model = ResNeXt(SEBottleneck, 4, 32, [3, 4, 6, 3], num_classes=num_classes)
+    if pretrained:
+        settings = pretrain_settings['se_resnext_50'][pretrained]
+        assert num_classes == settings['num_classes'], \
+            "num_classes should be {}, but is {}".format(settings['num_classes'], num_classes)
 
-    settings = pretrain_settings['se_resnext_50'][pretrained]
-    path = settings['url']
-    pretrained_parallel_state_dict = torch.load(path, map_location='cpu')['state_dict']
-    pretrained_normal_state_dict = dict()
-    for key in pretrained_parallel_state_dict.keys():
-        pretrained_normal_state_dict[key.split('module.')[1]] = pretrained_parallel_state_dict[key]
-    model.load_state_dict(pretrained_normal_state_dict)
-
-    # if pretrained:
-    #     settings = pretrain_settings['se_resnext_50'][pretrained]
-    #     assert num_classes == settings['num_classes'], \
-    #         "num_classes should be {}, but is {}".format(settings['num_classes'], num_classes)
-    #     model.load_state_dict(model_zoo.load_url(settings['url']))
+        # weights = model_zoo.load_url(settings['url'])
+        _, weights = load_seafile_url(settings['url'])
+        weights = weights['state_dict']
+        pretrained_normal_state_dict = dict()
+        for key in weights.keys():
+            pretrained_normal_state_dict[key.split('module.')[1]] = weights[key]
+        model.load_state_dict(pretrained_normal_state_dict)
 
     for params in model.parameters():
         params.requires_grad = requires_grad

@@ -65,8 +65,8 @@ class DecoderBlock(nn.Module):
         x = self.first_conv(x)
         out = self.conv_bn_relu(x)
         out = self.conv(out)
-        out = out + x
         out = self.bn(out)
+        out = out + x
         out = self.relu(out)
         return out
     
@@ -108,10 +108,10 @@ class ResidualBlock(nn.Module):
         out = self.start_relu(out)
         out = self.conv_bn_relu(out)
         out = self.conv(out)
-        out = out + x
         out = self.final_bn(out)
         if self.add_se:
             out = self.se_block(out)
+        out = out + x
         if self.add_relu:
             out = self.final_relu(out)
         return out
@@ -169,8 +169,6 @@ class DecoderBlockResidual(nn.Module):
                                         add_se=se_include,
                                         bn_type=bn_type,
                                         conv_type=conv_type)
-        if self.se_include:
-            self.se_layers = SCSEBlock(inside_channels, reduction=16)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout2d(p=dropout_rate)
     

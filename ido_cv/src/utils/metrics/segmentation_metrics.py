@@ -5,6 +5,8 @@ true labels and predicted labels using numpy
 """
 
 import numpy as np
+import cv2
+from ..images_transform import resize_image
 
 
 # BINARY METRICS
@@ -31,10 +33,7 @@ def get_metric(y_true, y_pred, metric_name):
             metrics.append(1)
             continue
 
-        # true = true.astype(bool)
-        # pred = pred.astype(bool)
-        # intersection = (true & pred).sum()
-        # im_sum = true.sum() + pred.sum()
+        pred = resize_image(pred, size=true.shape[:2], interpolation=cv2.INTER_NEAREST)
         
         # Alternate
         intersection = np.sum(np.logical_and(true, pred).astype(np.uint8))
@@ -63,11 +62,14 @@ def get_metric(y_true, y_pred, metric_name):
 # MULTICLASS METRICS
 
 
-def get_metric_multi(y_true, y_pred, metric_name, ignore_class):
+def get_metric_multi(y_true: np.ndarray, y_pred: np.ndarray, metric_name: str,
+                     ignore_class: int) -> np.ndarray:
     """ Function to make multiclass metric (jaccard, dice, mean IoU)
 
     :param y_true:
     :param y_pred:
+    :param metric_name:
+    :param ignore_class:
     :return:
     """
     # y_pred[y_pred < 0.9] = 0
@@ -75,9 +77,9 @@ def get_metric_multi(y_true, y_pred, metric_name, ignore_class):
     
     true_classes = y_true
     
-    confusion_matrix = calculate_confusion_matrix_from_arrays(pred_classes,
-                                                              true_classes,
-                                                              y_pred.shape[1])
+    confusion_matrix = calculate_confusion_matrix_from_arrays(
+        pred_classes, true_classes, y_pred.shape[1]
+    )
     # print(confusion_matrix)
     if ignore_class is None:
         confusion_matrix = confusion_matrix[1:, 1:]
@@ -85,7 +87,8 @@ def get_metric_multi(y_true, y_pred, metric_name, ignore_class):
     return np.mean(metric)
 
 
-def calculate_confusion_matrix_from_arrays(prediction, ground_truth, nr_labels):
+def calculate_confusion_matrix_from_arrays(prediction: np.ndarray, ground_truth: np.ndarray,
+                                           nr_labels: int) -> np.ndarray:
     replace_indices = np.vstack((
         ground_truth.flatten(),
         prediction.flatten())
@@ -99,7 +102,8 @@ def calculate_confusion_matrix_from_arrays(prediction, ground_truth, nr_labels):
     return confusion_matrix
 
 
-def get_metric_from_matrix(confusion_matrix, metric_name, ignore_class=None):
+def get_metric_from_matrix(confusion_matrix: np.ndarray, metric_name: str,
+                           ignore_class: int = None) -> list:
     metrics = []
     if ignore_class is None:
         index_list = [i for i in range(confusion_matrix.shape[0])]
@@ -107,6 +111,7 @@ def get_metric_from_matrix(confusion_matrix, metric_name, ignore_class=None):
         index_list = [i for i in range(confusion_matrix.shape[0]) if i != ignore_class]
     
     for index in index_list:
+
         true_positives = confusion_matrix[index, index]
         false_positives = confusion_matrix[:, index].sum() - true_positives
         false_negatives = confusion_matrix[index, :].sum() - true_positives

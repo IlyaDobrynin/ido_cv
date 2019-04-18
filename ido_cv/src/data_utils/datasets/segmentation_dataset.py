@@ -76,7 +76,7 @@ class BinSegDataset(Dataset):
             return self._get_testset(image, fname)
     
     def _get_trainset(self, image, mask, name):
-        image = pad(image)
+        image = pad(image, mode='edge')
         image = resize(image, size=self.model_input_size)
         mask = pad(mask)
         mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)

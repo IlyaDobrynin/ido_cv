@@ -87,9 +87,9 @@ class EncoderCommon(nn.Module):
         return x, encoder_list
     
     def forward(self, x):
-        # raise NotImplementedError
-        x, encoder_list = self._make_encoder_forward(x)
-        return x
+        raise NotImplementedError
+        # x, encoder_list = self._make_encoder_forward(x)
+        # return x
     
     
 if __name__ == '__main__':
