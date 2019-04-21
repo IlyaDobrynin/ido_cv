@@ -4,7 +4,7 @@
 
 import torch
 from torchsummary import summary
-from mts_cv.src.models.detection.fpn.fpn_custom import FPNFactory
+from ido_cv.src.models.detection.fpn.fpn_custom import FPNFactory
 
 
 def test_fpn_custom():
