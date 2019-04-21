@@ -1,0 +1,3 @@
+backbone: 'resnet34'
+se_block: False
+residual: True

@@ -1,9 +1,9 @@
 import argparse
 import datetime
 
-from mts_cv.tests import test_main
-from mts_cv.main import main_pipe
-from mts_cv.src.utils.get_model_config import ConfigParser
+from ido_cv.tests import test_main
+from ido_cv.main import main_pipe
+from ido_cv.src.utils.get_model_config import ConfigParser
 
 
 parser = argparse.ArgumentParser(description='Symbol identification pipeline')
@@ -51,8 +51,8 @@ parser.add_argument("-cm", "--chp-metric",
                          'classification: loss, accuracy')
 parser.add_argument("-di", "--device-ids",
                     type=list,
-                    # default=[0, 1],
-                    default=[0],
+                    default=[0, 1],
+                    # default=[0],
                     # default=[-1],
                     help='List of the GPU ids to train on (default [0])')
 parser.add_argument("-w", "--workers",
@@ -66,11 +66,11 @@ parser.add_argument("-o", "--optimizer",
                          'Wariants are: "adam", "sgd"')
 parser.add_argument("-bs", "--batch-size",
                     type=int,
-                    default=42,
+                    default=32,
                     help='Size of the mini batch in data loader (default 10)')
 parser.add_argument("-lr", "--learning-rate",
                     type=float,
-                    default=0.00003,
+                    default=0.003,
                     help='Default learning rate (default 0.001). To find optimal learning rate'
                          'include "f" parameter to stages (-s ["f", "t"])')
 
@@ -142,12 +142,12 @@ parameters = dict(
     labels_name='masks',
     # path_to_weights=WEIGHTS_PATH,
     path_to_weights=None,
-    model_parameters=None,
+
 
     optimizer=arguments.optimizer,
     # stages=['f', 't', 'v', 'p'],
-    stages=['f', 't', 'v'],
-    # stages=['t', 'v'],
+    # stages=['f', 't', 'v'],
+    stages=['t', 'v'],
     # stages=['v'],
     # stages=['v', 'p'],
     # stages=['p'],
@@ -183,22 +183,34 @@ parameters = dict(
     postproc_test=False,
 
     # Save outputs parameters
+    default_threshold=0.5,
     save_val=False,
     save_test=False,
 
 )
 
 # Directories
-config_parser = ConfigParser(cfg_type='dirs', cfg_path='/home/ido-mts/Work/Projects/setup_test/cfg/directories.yml')
-DIRECTORIES = config_parser.parameters
+dirs_parser = ConfigParser(
+    cfg_type='dirs',
+    cfg_path='/home/ilyado/Programming/pet_projects/ido_cv/tests/cfg/directories.yml'
+)
+DIRECTORIES = dirs_parser.parameters
 DATA_DIR = DIRECTORIES['data_dir']
 OUT_DIR = DIRECTORIES['output_dir']
-data_path = DATA_DIR
-output_path = OUT_DIR
+if 'weights_path' in DIRECTORIES.keys():
+    WEIGHTS_PATH = DIRECTORIES['weights_path']
+else:
+    WEIGHTS_PATH = None
+parameters['data_path'] = DATA_DIR
+parameters['output_path'] = OUT_DIR
+parameters['path_to_weights'] = WEIGHTS_PATH
 
-parameters['data_path'] = data_path
-parameters['output_path'] = output_path
-
+model_parameters_parser = ConfigParser(
+    cfg_type='model',
+    cfg_path=f'/home/ilyado/Programming/pet_projects/ido_cv/tests/cfg/'
+    f'{parameters["task"]}/{parameters["mode"]}/{parameters["model_name"]}.yml'
+)
+parameters['model_parameters'] = model_parameters_parser.parameters
 
 # Test input parameters
 test_main.test_parameters(parameters)
