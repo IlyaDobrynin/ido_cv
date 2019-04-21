@@ -5,12 +5,12 @@
 """
 import gc
 import numpy as np
-from mts_cv.src.pipeline_class import Pipeline
+from ..pipeline_class import Pipeline
 
 
 def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
                batch_size: int = 1, workers: int = 1, save_preds: bool = False,
-               output_path: str = '', **kwargs):
+               output_path: str = '', **kwargs) -> dict:
     """ Validation process
 
     :param model: Model class
@@ -24,7 +24,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
     :param kwargs: Dict of keyword arguments
     :return:
     """
-    print('-' * 30, ' VALIDATION ', '-' * 30)
+
     task = pipeline.task
 
     if task == 'detection':

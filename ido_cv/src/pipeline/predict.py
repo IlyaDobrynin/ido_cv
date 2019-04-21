@@ -5,8 +5,8 @@
 """
 import os
 import gc
-from mts_cv import dirs
-from mts_cv.src.pipeline_class import Pipeline
+from ... import dirs
+from ..pipeline_class import Pipeline
 
 
 def prediction(model, pipeline: Pipeline, data_path: str, batch_size: int = 1, workers: int = 1,
@@ -27,8 +27,6 @@ def prediction(model, pipeline: Pipeline, data_path: str, batch_size: int = 1, w
     :param kwargs: Dict of keyword arguments
     :return:
     """
-    print('-' * 30, ' PREDICTION ', '-' * 30)
-
     task = pipeline.task
     time = pipeline.time
     if task == 'detection':

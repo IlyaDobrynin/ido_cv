@@ -4,18 +4,15 @@ Main line
 
 """
 import os
-import gc
 import yaml
-import numpy as np
 
-# from . import dirs
-from ido_cv import dirs
-from .src import allowed_parameters
-from .src.pipeline_class import Pipeline
-from .src.pipeline.find_learning_rate import find_lr
-from .src.pipeline.train import train
-from .src.pipeline.validation import validation
-from .src.pipeline.predict import prediction
+from . import dirs
+from . import allowed_parameters
+from . import Pipeline
+from . import find_lr
+from . import train
+from . import validation
+from . import prediction
 
 # Get parameters
 METRICS = allowed_parameters.METRICS
@@ -76,8 +73,8 @@ def main_pipe(args):
     scores = None
     stages = ['f', 't', 'v']
     if set(args['stages']).intersection(set(stages)):
-        
         # Find learning rate
+        print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
         if 'f' in args['stages']:
             args['learning_rate'] = find_lr(
                 pipeline=pipe_class, model_name=args['model_name'], path_to_dataset=path_to_train,
@@ -103,6 +100,7 @@ def main_pipe(args):
             with open(os.path.join(model_save_dir, 'hyperparameters.yml'), 'w') as outfile:
                 yaml.dump(args, outfile, default_flow_style=False)
 
+            print('-' * 30, ' TRAINING ', '-' * 30)
             model = train(
                 model=model, pipeline=pipe_class, train_data_path=path_to_train,
                 val_data_path=path_to_valid, model_save_dir=model_save_dir,
@@ -115,9 +113,10 @@ def main_pipe(args):
                 learning_rate=args['learning_rate']
 
             )
-            
-        # Validation (metrics evaluation) line
+
         if 'v' in args['stages']:
+            # Validation (metrics evaluation) line
+            print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
                 model=model, pipeline=pipe_class, data_path=path_to_holdout,
                 val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
@@ -127,6 +126,7 @@ def main_pipe(args):
 
     # Prediction line
     if 'p' in args['stages']:
+        print('-' * 30, ' PREDICTION ', '-' * 30)
         threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
             else args['default_threshold']
         print(f'Prediction threshold: {threshold}')
