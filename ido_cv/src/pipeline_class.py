@@ -605,9 +605,10 @@ class Pipeline(AbstractPipeline):
                         true_batch = np.squeeze(targets.data.cpu().numpy(), axis=-1).astype(np.uint8)
                         outputs = torch.softmax(outputs, dim=-1)
                         pred_batch = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        metric_values[m_name] += [
-                            m_func(true_batch, pred_batch)
-                        ]
+                        for m_name, m_func in metrics.items():
+                            metric_values[m_name] += [
+                                m_func(true_batch, pred_batch)
+                            ]
 
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
@@ -823,7 +824,9 @@ class Pipeline(AbstractPipeline):
 
         return pred_df
 
-    def evaluate_metrics(self, true_df, pred_df, iou_thresholds=None, metric_names=None):
+    def evaluate_metrics(self, true_df: pd.DataFrame, pred_df: pd.DataFrame,
+                         iou_thresholds: list = None, metric_names: list = None,
+                         verbose: int = 1) -> dict:
         """ Common function to evaluate metrics
 
         :param true_df:
@@ -854,20 +857,44 @@ class Pipeline(AbstractPipeline):
                 for m_name in metric_names:
                     threshold, metric_value = get_opt_threshold(masks_t, masks_p, metric_name=m_name)
                     out_metrics[m_name] = {'threshold': threshold, 'value': metric_value}
+                if verbose == 1:
+                    for k, v in out_metrics.items():
+                        print(f'{k} metric: ')
+                        for m_k, m_v in v.items():
+                            print(f'- best {m_k}: {m_v:.5f}')
+
             else:  # self.mode == 'multi'
                 masks_p = np.moveaxis(masks_p, -1, 1)
                 out_metrics = dict()
-                for i in range(1, 11):
+                colors = allowed_parameters.SEG_MULTI_COLORS  # HARDCODE
+                for i, (class_name, class_color) in enumerate(colors.items()):
+                    # TODO delete hardcode in colors and 11
+                    if i + 1 == 11:  # HARDCODE
+                        continue
+                    class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
+                    class_masks_p = masks_p[:, i + 1, :, :]
 
-                    class_masks_t = (masks_t == i)
-                    class_masks_p = masks_p[:, i, :, :]
+                    out_metrics[class_name] = dict()
                     for m_name in metric_names:
                         threshold, metric_value = get_opt_threshold(class_masks_t,
                                                                     class_masks_p,
                                                                     metric_name=m_name)
-                        out_metrics[m_name] = {'threshold': threshold, 'value': metric_value}
+                        out_metrics[class_name][m_name] = {'threshold': threshold,
+                                                           'value': metric_value}
 
-                    print(f'Class {i - 1}: ', out_metrics)
+                    # idx = np.random.randint(0, class_masks_t.shape[0], 1)[0]
+                    # draw_images([class_masks_t[idx, ...], class_masks_p[idx, ...]])
+
+                if verbose == 1:
+                    for class_name, class_values in out_metrics.items():
+                        print(f'\nClass {class_name}: ')
+                        for k, v in class_values.items():
+                            print(f'{k} metric: ')
+                            for m_k, m_v in v.items():
+                                print(f'- best {m_k}: {m_v:.5f}')
+
+
+
         else:  # self.task == 'classification'
             if metric_names is not None:
                 metrics = dict()

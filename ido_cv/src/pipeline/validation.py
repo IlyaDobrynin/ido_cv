@@ -78,10 +78,6 @@ def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_
             pred_df=pred_df,
             metric_names=val_metrics
         )
-        for k, v in scores.items():
-            print(f'{k} metric: ')
-            for m_k, m_v in v.items():
-                print(f'- best {m_k}: {m_v:.5f}')
 
     # Get score for classification
     else:  # task == 'classification':
