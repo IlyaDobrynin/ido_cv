@@ -6,9 +6,12 @@
 import gc
 import numpy as np
 from ..pipeline_class import Pipeline
+from ..utils.common_utils import get_true_classification
+from ..utils.common_utils import get_true_segmentation
+from ..utils.common_utils import get_true_detection
 
 
-def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
+def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_metrics: list,
                batch_size: int = 1, workers: int = 1, save_preds: bool = False,
                output_path: str = '', **kwargs) -> dict:
     """ Validation process
@@ -16,6 +19,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
     :param model: Model class
     :param pipeline: Pipeline class
     :param data_path: Path to validation images
+    :param labels_path: Path to validation labels
     :param val_metrics: List of validation metrics names
     :param batch_size: Size of the data minibatch
     :param workers: Number of subprocesses to use for data loading
@@ -26,7 +30,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
     """
 
     task = pipeline.task
-
+    mode = pipeline.mode
     if task == 'detection':
         cls_thresh = kwargs['cls_thresh']
         nms_thresh = kwargs['nms_thresh']
@@ -55,10 +59,9 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
     del holdout_loader
     gc.collect()
 
-    true_df = pipeline.get_true_labels(labels_path=data_path)
-
     # Get score for detection
     if task == 'detection':
+        true_df = get_true_detection(labels_path=labels_path)
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
@@ -69,6 +72,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
 
     # Get score for segmentation
     elif task == 'segmentation':
+        true_df = get_true_segmentation(labels_path=labels_path, mode=mode)
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
@@ -81,6 +85,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
 
     # Get score for classification
     else:  # task == 'classification':
+        true_df = get_true_classification(labels_path=labels_path)
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,

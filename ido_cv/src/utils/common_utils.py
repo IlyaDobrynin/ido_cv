@@ -2,9 +2,12 @@
 """
     Some helper functions
 """
+import os
 import math
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
+import cv2
 import torch
 import torch.nn as nn
 from .metrics.segmentation_metrics import get_metric
@@ -298,3 +301,94 @@ def msr_init(net):
             layer.bias.data.zero_()
         elif type(layer) == nn.Linear:
             layer.bias.data.zero_()
+
+
+def get_true_detection(labels_path: str) -> pd.DataFrame:
+    """ Function makes dataframe with true labels for detection task
+
+    :param labels_path: path to the detection labels
+    :return:
+    """
+    if os.path.exists(labels_path):
+        true_df = pd.DataFrame()
+        true_names, true_boxes, true_labels = [], [], []
+        with open(labels_path) as f:
+            lines = f.readlines()
+        for line in lines:
+            splited = line.strip().split()
+            true_names.append(splited[0])
+            num_boxes = (len(splited) - 1) // 5
+
+            box = [
+                [int(splited[1 + 5 * i]), int(splited[2 + 5 * i]), int(splited[3 + 5 * i]),
+                 int(splited[4 + 5 * i])]
+                for i in range(num_boxes)
+            ]
+            label = [int(splited[5 + 5 * i]) for i in range(num_boxes)]
+            true_boxes.append(box)
+            true_labels.append(label)
+        true_df['names'] = true_names
+        true_df['boxes'] = true_boxes
+        true_df['labels'] = true_labels
+    else:
+        raise ValueError(
+            f"Labels path {labels_path} does not exists."
+        )
+    return true_df
+
+
+def get_true_classification(labels_path: str) -> pd.DataFrame:
+    """ Function makes dataframe with true labels for classification task
+
+    :param labels_path: path to the classification labels
+    :return:
+    """
+    if os.path.exists(labels_path):
+        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path, 'labels.csv'), sep=';')
+    else:
+        raise ValueError(
+            f"Labels path {labels_path} does not exists."
+        )
+    return true_df
+
+
+def get_true_segmentation(labels_path: str, mode: str) -> pd.DataFrame:
+    """ Function makes dataframe with true labels for segmentation task
+
+    :param labels_path: path to the classification labels
+    :param mode: mode (binary or multi)
+    :param colors: colors encoding (for multi only)
+    :param n_classes: numbers of classes
+    :return:
+    """
+    if os.path.exists(labels_path):
+        true_df = pd.DataFrame()
+        if mode == 'binary':
+            true_masks = []
+            mask_names = os.listdir(labels_path)
+            for mask_name in mask_names:
+                mask = cv2.imread(filename=os.path.join(labels_path, mask_name), flags=0)
+                mask = mask / 255.
+                true_masks.append(mask)
+            true_df['names'] = mask_names
+            true_df['masks'] = true_masks
+
+        # Get true labels for multiclass segmentation
+        elif mode == 'multi':  # self.mode == 'multi'
+            true_masks = []
+            mask_names = os.listdir(labels_path)
+            for mask_name in mask_names:
+                mask = cv2.imread(filename=os.path.join(labels_path, mask_name))
+                mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+                true_masks.append(mask)
+            true_df['names'] = mask_names
+            true_df['masks'] = true_masks
+        else:
+            raise ValueError(
+                f"Wrong mode parameter: {mode}. Should be 'binary' or 'multi'."
+            )
+    else:
+        raise ValueError(
+            f"Labels path {labels_path} does not exists."
+        )
+    return true_df

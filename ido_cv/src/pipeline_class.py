@@ -7,9 +7,7 @@ import os
 import gc
 import copy
 from pathlib import Path
-import itertools
 from abc import ABC, abstractmethod
-
 import cv2
 import numpy as np
 import pandas as pd
@@ -30,10 +28,16 @@ from .data_utils.datasets.segmentation_dataset import BinSegDataset
 from .data_utils.datasets.segmentation_dataset import MultSegDataset
 from .data_utils.datasets.classification_dataset import ClassifyDataset
 from .data_utils.data_augmentations import Augmentations
-from .data_utils import data_postprocessing as postproc
+
 from .utils import model_utils
-from .utils.images_transform import unpad_bboxes, resize_bboxes, unpad, resize
-from .utils.utils import get_opt_threshold
+from .utils.image_utils import unpad_bboxes
+from .utils.image_utils import resize_bboxes
+from .utils.image_utils import unpad
+from .utils.image_utils import resize
+from .utils.image_utils import convert_multilabel_mask
+from .utils.image_utils import draw_images
+from .utils.image_utils import delete_small_instances
+from .utils.common_utils import get_opt_threshold
 from .utils.metrics.detection_metrics import mean_ap
 from .utils.model_utils import write_event
 
@@ -211,6 +215,7 @@ class Pipeline(AbstractPipeline):
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
         :param path_to_weights: Path to the trained weights
+        :param model_parameters: Model parameters
         :return:
         """
         # Get model parameters
@@ -567,41 +572,42 @@ class Pipeline(AbstractPipeline):
                 losses.append(loss.item())
 
                 # Calculate metrics
-                # class_metrics = {k: [] for k in range(1, 11)}
-                for m_name, m_func in metrics.items():
-                    if self.task == 'segmentation':
-                        if self.mode == 'binary':
-                            true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                            pred_batch = np.squeeze(outputs.data.cpu().numpy(), axis=1).astype(np.float32)
+                if self.task == 'segmentation':
+                    if self.mode == 'binary':
+                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
+                        pred_batch = np.squeeze(outputs.data.cpu().numpy(), axis=1).astype(np.float32)
+                        for m_name, m_func in metrics.items():
                             metric_values[m_name] += [
                                 m_func(true_batch, (pred_batch > 0.5), metric_name=m_name)
                             ]
-                        else:  # self.mode == 'multi'
-                            outputs = torch.softmax(outputs, dim=1)
-                            true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                            pred_batch = outputs.data.cpu().numpy().astype(np.float32)
+                    else:  # self.mode == 'multi'
+                        outputs = torch.softmax(outputs, dim=1)
+                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
+                        pred_batch = outputs.data.cpu().numpy().astype(np.float32)
+                        for m_name, m_func in metrics.items():
                             metric_values[m_name] += [
                                 m_func(true_batch, pred_batch, metric_name=m_name, ignore_class=None)
                             ]
-                    elif self.task == 'detection':
-                        # TODO implement detection metric
-                        metric_values[m_name] += None
-                    else:  # self.task == 'classification'
-                        if self.mode == 'binary':
-                            true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1).astype(np.uint8)
-                            outputs = torch.sigmoid(outputs)
-                            pred_batch = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
+                elif self.task == 'detection':
+                    # TODO implement detection metric
+                    metric_values[m_name] += None
+                else:  # self.task == 'classification'
+                    if self.mode == 'binary':
+                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1).astype(np.uint8)
+                        outputs = torch.sigmoid(outputs)
+                        pred_batch = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
+                        for m_name, m_func in metrics.items():
                             metric_values[m_name] += [
                                 m_func(true_batch, pred_batch)
                             ]
-                        else:  # self.mode == 'multi'
-                            # TODO сделать мультиклассовую классификацию
-                            true_batch = np.squeeze(targets.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                            outputs = torch.softmax(outputs, dim=-1)
-                            pred_batch = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                            metric_values[m_name] += [
-                                m_func(true_batch, pred_batch)
-                            ]
+                    else:  # self.mode == 'multi'
+                        # TODO сделать мультиклассовую классификацию
+                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=-1).astype(np.uint8)
+                        outputs = torch.softmax(outputs, dim=-1)
+                        pred_batch = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
+                        metric_values[m_name] += [
+                            m_func(true_batch, pred_batch)
+                        ]
 
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
@@ -621,8 +627,6 @@ class Pipeline(AbstractPipeline):
 
         :param model: Input model
         :param dataloader: Test dataloader
-        :param cls_thresh: Threshold for class probability
-        :param nms_thresh: Threshold for non-maximum suppression
         :param save: Flag to save results
         :param save_dir: Path to save results
         :return:
@@ -781,7 +785,7 @@ class Pipeline(AbstractPipeline):
                 masks = np.copy(pred_df['masks'].values)
 
                 postproc_masks = [
-                    postproc.delete_small_instances(
+                    delete_small_instances(
                         (mask > threshold).astype(np.uint8), obj_size=obj_size, hole_size=hole_size
                     ) for mask in masks
                 ]
@@ -808,10 +812,6 @@ class Pipeline(AbstractPipeline):
                     postproc_masks.append(mask)
 
                 pred_df['masks'] = postproc_masks
-
-                # for i, row in enumerate(pred_df.iterrows()):
-                #     mask_post = row[1]['masks']
-                #     self._draw_images([mask_post])
 
                 # Save result
                 if save:
@@ -932,7 +932,7 @@ class Pipeline(AbstractPipeline):
                     matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
                     msk_img[matching, :] = [0, 0, 0]
 
-                    self._draw_images([image, mask])
+                    draw_images([image, mask])
 
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'
@@ -941,127 +941,10 @@ class Pipeline(AbstractPipeline):
                     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
                                        dtype=np.uint8)
                     mask = row[1]['masks']
-                    visual_mask = self.convert_multilabel_mask(mask=mask, how='class2rgb', n_classes=11)
-                    self._draw_images([image, visual_mask])
-
-    def get_true_labels(self, labels_path):
-        """ Function to get true labels dataframe
-
-        :param labels_path: Path to labels file
-        :return:
-        """
-        true_df = pd.DataFrame()
-
-        # Get true labels for detection
-        if self.task == 'detection':
-            true_names, true_boxes, true_labels = [], [], []
-            with open(labels_path) as f:
-                lines = f.readlines()
-            for line in lines:
-                splited = line.strip().split()
-                true_names.append(splited[0])
-                num_boxes = (len(splited) - 1) // 5
-
-                box = [
-                    [int(splited[1 + 5 * i]), int(splited[2 + 5 * i]), int(splited[3 + 5 * i]), int(splited[4 + 5 * i])]
-                    for i in range(num_boxes)
-                ]
-                label = [int(splited[5 + 5 * i]) for i in range(num_boxes)]
-
-                # box, label = [], []
-                # for i in range(num_boxes):
-                #     xmin = splited[1 + 5 * i]
-                #     ymin = splited[2 + 5 * i]
-                #     xmax = splited[3 + 5 * i]
-                #     ymax = splited[4 + 5 * i]
-                #     c = splited[5 + 5 * i]
-                #     box.append([int(xmin), int(ymin), int(xmax), int(ymax)])
-                #     label.append(int(c))
-                true_boxes.append(box)
-                true_labels.append(label)
-            true_df['names'] = true_names
-            true_df['boxes'] = true_boxes
-            true_df['labels'] = true_labels
-
-        # Get true labels for binary segmentation
-        elif self.task == 'segmentation':
-            if self.mode == 'binary':
-                true_masks = []
-                mask_names = os.listdir(os.path.join(labels_path, 'masks'))
-                for mask_name in mask_names:
-                    mask = cv2.imread(filename=os.path.join(labels_path, 'masks', mask_name), flags=0)
-                    mask = mask / 255.
-                    true_masks.append(mask)
-                true_df['names'] = mask_names
-                true_df['masks'] = true_masks
-
-            # Get true labels for multiclass segmentation
-            else:  # self.mode == 'multi'
-                true_masks = []
-                mask_names = os.listdir(os.path.join(labels_path, 'masks'))
-                for mask_name in mask_names:
-                    mask = cv2.imread(filename=os.path.join(labels_path, 'masks', mask_name))
-                    mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
-                    mask = self.convert_multilabel_mask(mask, how='rgb2class', n_classes=11)
-                    true_masks.append(mask)
-
-                dates_file = os.path.join(labels_path, 'true_dates.txt')
-                true_dates = []
-                with open(dates_file) as f:
-                    lines = f.readlines()
-                for line in lines:
-                    splited = line.strip().split()
-                    true_dates.append(splited[1:])
-                true_df['names'] = mask_names
-                true_df['masks'] = true_masks
-                true_df['dates'] = true_dates
-
-        else:  # self.task == 'classification'
-            true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path, 'labels.csv'),
-                                  sep=';')
-                                  # header=None,
-                                  # names=['names', 'labels'])
-        return true_df
-
-    @staticmethod
-    def convert_multilabel_mask(mask, how='rgb2class', n_classes=2):
-        """ Function for multilabel mask convertation
-
-        :param mask:
-        :param how:
-        :return:
-        """
-        colors = allowed_parameters.SEG_MULTI_COLORS
-        if how == 'rgb2class':
-            out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1]), dtype=np.uint8)
-            for cls in range(n_classes):
-                if cls == 11:
-                    continue
-                matching = np.all(mask == colors[cls], axis=-1)
-                out_mask[matching] = cls + 1
-
-        elif how == 'class2rgb':
-            out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-            for cls in range(n_classes):
-                if cls == 0:
-                    continue
-                matching = (mask[:, :] == cls)
-                out_mask[matching, :] = colors[cls - 1]
-        else:
-            raise ValueError(
-                f"Wrong parameter how: {how}. Should be 'rgb2class or class2rgb."
-            )
-        return out_mask
-
-    @staticmethod
-    def _draw_images(images_list):
-        n_images = len(images_list)
-        fig = plt.figure()
-        for i, image in enumerate(images_list):
-            ax = fig.add_subplot(1, n_images, i + 1)
-            ax.imshow(image)
-        plt.show()
-
+                    visual_mask = convert_multilabel_mask(
+                        mask=mask,how='class2rgb', colors=allowed_parameters.SEG_MULTI_COLORS
+                    )
+                    draw_images([image, visual_mask])
 
     @staticmethod
     def _draw_image_boxes(image, boxes, labels, scores):
@@ -1081,35 +964,3 @@ class Pipeline(AbstractPipeline):
         plt.imshow(draw)
         plt.show()
 
-    @staticmethod
-    def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
-        """
-        This function prints and plots the confusion matrix.
-        Normalization can be applied by setting `normalize=True`.
-        """
-        if normalize:
-            cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-            print("Normalized confusion matrix")
-        else:
-            print('Confusion matrix, without normalization')
-
-        print(cm)
-
-        plt.imshow(cm, interpolation='nearest', cmap=cmap)
-        plt.title(title)
-        plt.colorbar()
-        tick_marks = np.arange(len(classes))
-        plt.xticks(tick_marks, classes, rotation=45)
-        plt.yticks(tick_marks, classes)
-
-        fmt = '.2f' if normalize else 'd'
-        thresh = cm.max() / 2.
-        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-            plt.text(j, i, format(cm[i, j], fmt),
-                     horizontalalignment="center",
-                     color="white" if cm[i, j] > thresh else "black")
-
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label')
-        plt.tight_layout()
-        plt.show()

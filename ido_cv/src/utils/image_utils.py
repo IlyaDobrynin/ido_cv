@@ -8,6 +8,9 @@ import cv2
 import numpy as np
 import torch
 from skimage import util
+from skimage.morphology import remove_small_holes, remove_small_objects
+import matplotlib.pyplot as plt
+plt.rcParams['figure.figsize'] = (15.0, 12.0)
 
 
 def pad(img, boxes=None, mode='constant'):
@@ -217,6 +220,126 @@ def center_crop(img, boxes, size):
     return img, boxes
 
 
-def make_colors(image):
-    image[(image < 240) & (image > 50)] = 0
-    return image
+def draw_images(images_list: list, orient: str = 'horizontal'):
+    """ Function draws images from images_list
+
+    :param images_list: List of numpy.ndarray images
+    :param orient: How to orient images ('horisontal' or 'vertical')
+    :return:
+    """
+    n_images = len(images_list)
+    fig = plt.figure()
+    for i, image in enumerate(images_list):
+        if orient == 'horizontal':
+            ax = fig.add_subplot(1, n_images, i + 1)
+        elif orient == 'vertical':
+            ax = fig.add_subplot(n_images, 1, i + 1)
+        else:
+            raise ValueError(
+                f"Wrong parameter orient: {orient}. Should be 'horizontal' or 'vertical'."
+            )
+        ax.imshow(image)
+    plt.show()
+
+
+def convert_multilabel_mask(mask: np.ndarray, colors: dict, how: str = 'rgb2class',
+                            ignore_class: int = None) -> np.ndarray:
+    """ Function for multilabel mask convertation
+
+    :param mask: Numpy ndarray of mask
+    :param colors: Dictionary with colors encodings
+    :param how: 'rgb2class' or 'class2rgb'
+    :param ignore_class: Class to ignore
+    :return:
+    """
+    n_classes = len(colors.keys())
+    if how == 'rgb2class':
+        out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1]), dtype=np.uint8)
+        for cls in range(n_classes):
+            if cls == ignore_class:
+                continue
+            matching = np.all(mask == colors[cls], axis=-1)
+            out_mask[matching] = cls + 1
+    elif how == 'class2rgb':
+        out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
+        for cls in range(n_classes):
+            if cls == ignore_class:
+                continue
+            matching = (mask[:, :] == cls)
+            out_mask[matching, :] = colors[cls - 1]
+    else:
+        raise ValueError(
+            f"Wrong parameter how: {how}. Should be 'rgb2class or class2rgb."
+        )
+    return out_mask
+
+
+def delete_small_instances(image: np.ndarray, hole_size: int = None, obj_size: int = None):
+    """ Function delete small objects and holes on the given image
+
+    :param image: Input image
+    :param hole_size: Maximum area of the hole that will be filled
+    :param obj_size: Minimum size of the object to delete
+    :return:
+    """
+    image_ = np.copy(image)
+    if len(image.shape) == 3:
+        out_image = np.zeros_like(image_, dtype=np.uint8)
+        for ch in range(image_.shape[-1]):
+            img = image_[:, :, ch]
+            if hole_size is not None:
+                img = remove_small_holes(img, area_threshold=hole_size)
+            if obj_size is not None:
+                img = remove_small_objects(img, min_size=obj_size)
+            out_image[:, :, ch] = img
+
+    elif len(image.shape) == 2:
+        out_image = np.copy(image_)
+        if hole_size is not None:
+            out_image = remove_small_holes(image_, area_threshold=hole_size)
+        if obj_size is not None:
+            out_image = remove_obj(image_, min_size=obj_size)
+    else:
+        raise ValueError(
+            f'Wrong image shape: {image.shape}'
+        )
+    return out_image
+
+
+def remove_obj(image: np.ndarray, min_size: int = 10, connectivity: int = 8):
+    image_ = np.copy(image)
+    nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(
+        image_,
+        connectivity=connectivity
+    )
+    sizes = stats[1:, -1]
+    nb_components = nb_components - 1
+    img2 = np.zeros((output.shape))
+    for i in range(0, nb_components):
+        if sizes[i] >= min_size:
+            img2[output == i + 1] = 255
+    return img2
+
+
+def make_erode(image: np.ndarray, kernel_size: tuple = (100, 1)):
+    """ Function make morphological erosion for a given image
+
+    :param image:
+    :param kernel_size:
+    :return:
+    """
+    kernel = np.ones(kernel_size, np.uint8)
+    erosion = cv2.erode(image, kernel).astype(np.uint8)
+    return erosion
+
+
+def make_dilate(image: np.ndarray, kernel_size=(100, 1)):
+    """ Function make morphological dilation for a given image
+
+    :param image:
+    :param kernel_size:
+    :return:
+    """
+    kernel = np.ones(kernel_size, np.uint8)
+    dilation = cv2.dilate(image, kernel).astype(np.uint8)
+    return dilation

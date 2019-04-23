@@ -23,7 +23,7 @@ TTA = allowed_parameters.TTA
 
 def main_pipe(args):
     """ Main pipeline
-    
+
     :param args: Initial parameters
     :return:
     """
@@ -31,12 +31,12 @@ def main_pipe(args):
         allocate_on = 'cpu'
     else:
         allocate_on = 'gpu'
-    
+
     if args['tta_list'] is not None:
         tta_list = [TTA[args['task']][args['mode']][tta_name] for tta_name in args['tta_list']]
     else:
         tta_list = None
-        
+
     # Get main pipeline class
     pipe_class = Pipeline(
         task=args['task'],
@@ -50,8 +50,9 @@ def main_pipe(args):
         random_seed=args['seed'],
         time=args['time']
     )
-    
-    # Get initial model and initial parameters (first epoch, first step, best measure)
+
+    # Get initial model, initial parameters (first epoch, first step, best measure)
+    # and model_parameters
     model, initial_parameters, model_parameters = pipe_class.get_model(
         model_name=args['model_name'],
         device_ids=args['device_ids'],
@@ -68,14 +69,15 @@ def main_pipe(args):
     path_to_train = os.path.join(args['data_path'], 'train')
     path_to_valid = os.path.join(args['data_path'], 'val')
     path_to_holdout = os.path.join(args['data_path'], 'holdout')
+    path_to_holdout_labels = os.path.join(args['data_path'], 'holdout/masks')
     path_to_test = os.path.join(args['data_path'], 'test')
 
     scores = None
     stages = ['f', 't', 'v']
     if set(args['stages']).intersection(set(stages)):
         # Find learning rate
-        print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
         if 'f' in args['stages']:
+            print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
                 pipeline=pipe_class, model_name=args['model_name'], path_to_dataset=path_to_train,
                 batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
@@ -119,8 +121,8 @@ def main_pipe(args):
             print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
                 model=model, pipeline=pipe_class, data_path=path_to_holdout,
-                val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
-                workers=args['workers'], save_preds=args['save_val'],
+                labels_path=path_to_holdout_labels, val_metrics=args['valid_metrics'],
+                batch_size=args['batch_size'], workers=args['workers'], save_preds=args['save_val'],
                 output_path=args['output_path']
             )
 
