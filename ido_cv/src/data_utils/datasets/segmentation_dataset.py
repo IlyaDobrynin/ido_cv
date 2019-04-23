@@ -12,7 +12,9 @@ from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 
 from ... import allowed_parameters
-from ...utils.images_transform import pad, resize, resize_image
+from ...utils.image_utils import pad
+from ...utils.image_utils import resize
+from ...utils.image_utils import resize_image
 
 
 def add_depth_channels(image_tensor):

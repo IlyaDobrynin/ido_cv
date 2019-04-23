@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-from ....utils.get_weights import load_seafile_url
+from ....utils.model_utils import load_seafile_url
 
 __all__ = ['resnext50', 'resnext101', 'resnext101_64', 'resnext152']
 

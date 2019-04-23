@@ -11,10 +11,9 @@ import torch
 from albumentations.torch.functional import img_to_tensor
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
-
-from .... import dirs
-from ...utils.images_transform import pad, resize, resize_image
-
+from ...utils.image_utils import pad
+from ...utils.image_utils import resize
+from ...utils.image_utils import resize_image
 
 
 class ClassifyDataset(Dataset):
