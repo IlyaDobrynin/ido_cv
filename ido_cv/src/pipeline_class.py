@@ -768,7 +768,7 @@ class Pipeline(AbstractPipeline):
             print("Predictions saved. Path: {}".format(csv_path))
         return pred_df
 
-    def postprocessing(self, pred_df: pd.DataFrame, threshold: float = 0., hole_size: int = None,
+    def postprocessing(self, pred_df: pd.DataFrame, threshold: (list, float) = 0., hole_size: int = None,
                        obj_size: int = None, save: bool = False, save_dir: str = ''):
         """ Function for predicted data postprocessing
 
@@ -804,14 +804,19 @@ class Pipeline(AbstractPipeline):
                 postproc_masks = []
                 masks = np.copy(pred_df['masks'].values)
                 for mask in masks:
-                    mask = mask > 0.99
-                    mask = np.argmax(mask, axis=-1)
-                    # postproc_mask = postproc.delete_small_instances(mask,
-                    #                                                 obj_size=obj_size,
-                    #                                                 hole_size=hole_size)
+                    threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
+                        else threshold
+                    postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
+                    for ch in range(1, mask.shape[-1]):
+                        mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
+                        mask_ch = delete_small_instances(
+                            mask_ch,
+                            obj_size=obj_size,
+                            hole_size=hole_size
+                        )
+                        postproc_mask[mask_ch > 0] = ch
 
-                    postproc_masks.append(mask)
-
+                    postproc_masks.append(postproc_mask)
                 pred_df['masks'] = postproc_masks
 
                 # Save result
@@ -893,8 +898,6 @@ class Pipeline(AbstractPipeline):
                             for m_k, m_v in v.items():
                                 print(f'- best {m_k}: {m_v:.5f}')
 
-
-
         else:  # self.task == 'classification'
             if metric_names is not None:
                 metrics = dict()
@@ -958,9 +961,7 @@ class Pipeline(AbstractPipeline):
                     msk_img = np.copy(image)
                     matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
                     msk_img[matching, :] = [0, 0, 0]
-
-                    draw_images([image, mask])
-
+                    draw_images([image, mask], orient='vertical')
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'
                 for row in preds_df.iterrows():
@@ -968,10 +969,12 @@ class Pipeline(AbstractPipeline):
                     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
                                        dtype=np.uint8)
                     mask = row[1]['masks']
-                    visual_mask = convert_multilabel_mask(
-                        mask=mask,how='class2rgb', colors=allowed_parameters.SEG_MULTI_COLORS
-                    )
-                    draw_images([image, visual_mask])
+                    # print(mask.shape)
+                    # TODO delete allowed_parameters.SEG_MULTI_COLORS
+                    # visual_mask = convert_multilabel_mask(
+                    #     mask=mask, how='class2rgb', colors=allowed_parameters.SEG_MULTI_COLORS
+                    # )
+                    draw_images([image, mask], orient='vertical')
 
     @staticmethod
     def _draw_image_boxes(image, boxes, labels, scores):

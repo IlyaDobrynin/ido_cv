@@ -129,8 +129,18 @@ def main_pipe(args):
     # Prediction line
     if 'p' in args['stages']:
         print('-' * 30, ' PREDICTION ', '-' * 30)
-        threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
-            else args['default_threshold']
+        # threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
+        #     else args['default_threshold']
+        threshold = None
+        if args['task'] == 'segmentation':
+            if args['mode'] == 'binary':
+                threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
+                    else args['default_threshold']
+            elif args['mode'] == 'multi':
+                threshold = [scores[cls][args['checkpoint_metric']]['threshold']
+                             for cls in scores.keys()] if scores is not None \
+                    else args['default_threshold']
+
         print(f'Prediction threshold: {threshold}')
         prediction(model=model, pipeline=pipe_class, data_path=path_to_test,
                    batch_size=args['batch_size'], workers=args['workers'], threshold=threshold,

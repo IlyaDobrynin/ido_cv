@@ -61,7 +61,8 @@ def prediction(model, pipeline: Pipeline, data_path: str, batch_size: int = 1, w
                 pred_df=test_pred_df,
                 threshold=threshold,
                 save=save_preds,
-                save_dir=output_path
+                save_dir=output_path,
+                obj_size=20
             )
 
         if show_preds:
