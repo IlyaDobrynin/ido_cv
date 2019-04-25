@@ -110,9 +110,15 @@ class FPNFactory(EncoderCommon):
     def _get_first_decoder_conv(self):
         first_conv_list = nn.ModuleList([])
         for i in range(self.depth):
-            first_conv_layer = self.ConvBlock(in_channels=self.encoder_filters[i],
-                                              out_channels=self.num_filters * 3,
-                                              kernel_size=1)
+            # first_conv_layer = self.ConvBlock(in_channels=self.encoder_filters[i],
+            #                                   out_channels=self.num_filters * 3,
+            #                                   kernel_size=1)
+            first_conv_layer = ConvBnRelu(in_channels=self.encoder_filters[i],
+                                          out_channels=self.num_filters * 3,
+                                          kernel_size=1,
+                                          bn_type=self.bn_type,
+                                          conv_type=self.conv_type)
+
             first_conv_list.append(first_conv_layer)
         return first_conv_list
 
@@ -120,19 +126,30 @@ class FPNFactory(EncoderCommon):
         second_conv_list = nn.ModuleList([])
         for i in range(self.depth):
             if i < (self.depth - 1):
-                second_conv_layer = self.ConvBlock(in_channels=self.num_filters * 3,
-                                                   out_channels=self.num_filters * 3,
-                                                   kernel_size=3,
-                                                   padding=1)
+                # second_conv_layer = self.ConvBlock(in_channels=self.num_filters * 3,
+                #                                    out_channels=self.num_filters * 3,
+                #                                    kernel_size=3,
+                #                                    padding=1)
+                second_conv_layer = ConvBnRelu(in_channels=self.num_filters * 3,
+                                               out_channels=self.num_filters * 3,
+                                               kernel_size=3,
+                                               padding=1,
+                                               bn_type=self.bn_type,
+                                               conv_type=self.conv_type)
                 second_conv_list.append(second_conv_layer)
         return second_conv_list
 
     def _get_third_decoder_conv(self):
         third_conv_list = nn.ModuleList([])
         for i in range(self.depth):
-            third_conv_layer = self.ConvBlock(in_channels=self.num_filters * 3,
-                                              out_channels=self.num_filters * 2,
-                                              kernel_size=1)
+            # third_conv_layer = self.ConvBlock(in_channels=self.num_filters * 3,
+            #                                   out_channels=self.num_filters * 2,
+            #                                   kernel_size=1)
+            third_conv_layer = ConvBnRelu(in_channels=self.num_filters * 3,
+                                          out_channels=self.num_filters * 2,
+                                          kernel_size=1,
+                                          bn_type=self.bn_type,
+                                          conv_type=self.conv_type)
             third_conv_list.append(third_conv_layer)
         return third_conv_list
 

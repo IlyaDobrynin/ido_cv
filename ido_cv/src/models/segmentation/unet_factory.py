@@ -54,7 +54,7 @@ class UnetFactory(EncoderCommon):
                                 - 'dilation'
                                 - 'fpa'
                                 - 'fpa_dilation'
-                                - None
+                                -  None
         dilate_depth:       Optional argument if mid_block=='dilation'. Amount of dilation depth.
         gau:                Flag to include PAN-like skip-connection
         hypercolumn:        Flag to include hypercolumn
@@ -257,7 +257,10 @@ class UnetFactory(EncoderCommon):
                                        in_dec_ch=in_dec_ch,
                                        out_channels=out_channels,
                                        dropout_rate=self.dropout_rate,
-                                       conv_type=self.conv_type)
+                                       conv_type=self.conv_type,
+                                       se_include=self.se_decoder,
+                                       depthwise=self.depthwise,
+                                       bn_type=self.bn_type)
             decoder_layers.append(d_block)
         # print(decoder_layers)
         return decoder_layers
