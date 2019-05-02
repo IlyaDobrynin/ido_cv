@@ -10,7 +10,7 @@ import torch
 from skimage import util
 from skimage.morphology import remove_small_holes, remove_small_objects
 import matplotlib.pyplot as plt
-plt.rcParams['figure.figsize'] = (15.0, 12.0)
+# plt.rcParams['figure.figsize'] = (15.0, 12.0)
 
 
 def pad(img, boxes=None, mode='constant'):
@@ -262,10 +262,8 @@ def convert_multilabel_mask(mask: np.ndarray, colors: dict, how: str = 'rgb2clas
             out_mask[matching] = cls + 1
     elif how == 'class2rgb':
         out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-        for cls in range(n_classes):
-            if cls == ignore_class:
-                continue
-            matching = (mask[:, :] == cls)
+        for cls in range(1, n_classes):
+            matching = mask[:, :] == cls
             out_mask[matching, :] = colors[cls - 1]
     else:
         raise ValueError(
