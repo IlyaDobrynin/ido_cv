@@ -4,18 +4,15 @@ Main line
 
 """
 import os
-import gc
 import yaml
-import numpy as np
 
-# from . import dirs
-from ido_cv import dirs
-from .src import allowed_parameters
-from .src.pipeline_class import Pipeline
-from .src.pipeline.find_learning_rate import find_lr
-from .src.pipeline.train import train
-from .src.pipeline.validation import validation
-from .src.pipeline.predict import prediction
+from . import dirs
+from . import allowed_parameters
+from . import Pipeline
+from . import find_lr
+from . import train
+from . import validation
+from . import prediction
 
 # Get parameters
 METRICS = allowed_parameters.METRICS
@@ -26,7 +23,7 @@ TTA = allowed_parameters.TTA
 
 def main_pipe(args):
     """ Main pipeline
-    
+
     :param args: Initial parameters
     :return:
     """
@@ -34,12 +31,12 @@ def main_pipe(args):
         allocate_on = 'cpu'
     else:
         allocate_on = 'gpu'
-    
+
     if args['tta_list'] is not None:
         tta_list = [TTA[args['task']][args['mode']][tta_name] for tta_name in args['tta_list']]
     else:
         tta_list = None
-        
+
     # Get main pipeline class
     pipe_class = Pipeline(
         task=args['task'],
@@ -53,8 +50,9 @@ def main_pipe(args):
         random_seed=args['seed'],
         time=args['time']
     )
-    
-    # Get initial model and initial parameters (first epoch, first step, best measure)
+
+    # Get initial model, initial parameters (first epoch, first step, best measure)
+    # and model_parameters
     model, initial_parameters, model_parameters = pipe_class.get_model(
         model_name=args['model_name'],
         device_ids=args['device_ids'],
@@ -71,14 +69,15 @@ def main_pipe(args):
     path_to_train = os.path.join(args['data_path'], 'train')
     path_to_valid = os.path.join(args['data_path'], 'val')
     path_to_holdout = os.path.join(args['data_path'], 'holdout')
+    path_to_holdout_labels = os.path.join(args['data_path'], 'holdout/masks')
     path_to_test = os.path.join(args['data_path'], 'test')
 
     scores = None
     stages = ['f', 't', 'v']
     if set(args['stages']).intersection(set(stages)):
-        
         # Find learning rate
         if 'f' in args['stages']:
+            print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
                 pipeline=pipe_class, model_name=args['model_name'], path_to_dataset=path_to_train,
                 batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
@@ -103,6 +102,7 @@ def main_pipe(args):
             with open(os.path.join(model_save_dir, 'hyperparameters.yml'), 'w') as outfile:
                 yaml.dump(args, outfile, default_flow_style=False)
 
+            print('-' * 30, ' TRAINING ', '-' * 30)
             model = train(
                 model=model, pipeline=pipe_class, train_data_path=path_to_train,
                 val_data_path=path_to_valid, model_save_dir=model_save_dir,
@@ -115,20 +115,32 @@ def main_pipe(args):
                 learning_rate=args['learning_rate']
 
             )
-            
-        # Validation (metrics evaluation) line
+
         if 'v' in args['stages']:
+            # Validation (metrics evaluation) line
+            print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
                 model=model, pipeline=pipe_class, data_path=path_to_holdout,
-                val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
-                workers=args['workers'], save_preds=args['save_val'],
+                labels_path=path_to_holdout_labels, val_metrics=args['valid_metrics'],
+                batch_size=args['batch_size'], workers=args['workers'], save_preds=args['save_val'],
                 output_path=args['output_path']
             )
 
     # Prediction line
     if 'p' in args['stages']:
-        threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
-            else args['default_threshold']
+        print('-' * 30, ' PREDICTION ', '-' * 30)
+        # threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
+        #     else args['default_threshold']
+        threshold = None
+        if args['task'] == 'segmentation':
+            if args['mode'] == 'binary':
+                threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
+                    else args['default_threshold']
+            elif args['mode'] == 'multi':
+                threshold = [scores[cls][args['checkpoint_metric']]['threshold']
+                             for cls in scores.keys()] if scores is not None \
+                    else args['default_threshold']
+
         print(f'Prediction threshold: {threshold}')
         prediction(model=model, pipeline=pipe_class, data_path=path_to_test,
                    batch_size=args['batch_size'], workers=args['workers'], threshold=threshold,

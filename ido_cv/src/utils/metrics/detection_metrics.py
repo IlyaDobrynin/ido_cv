@@ -6,7 +6,7 @@ Module implements metrics for detection:
 """
 from copy import deepcopy
 import numpy as np
-from ...utils import utils
+from ...utils import common_utils
 
 
 def mean_ap(true_df, pred_df, iou_thresholds):
@@ -105,7 +105,7 @@ def get_single_image_results(gt_boxes, pred_boxes, iou_thr):
     ious = []
     for ipb, pred_box in enumerate(pred_boxes):
         for igb, gt_box in enumerate(gt_boxes):
-            iou = utils.box_iou_alt(gt_box, pred_box)
+            iou = common_utils.box_iou_alt(gt_box, pred_box)
             if iou > iou_thr:
                 gt_idx_thr.append(igb)
                 pred_idx_thr.append(ipb)

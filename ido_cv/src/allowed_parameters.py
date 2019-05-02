@@ -50,8 +50,8 @@ METRICS = {
             'm_iou': seg_metric.get_metric
         },
         'multi': {
-            'jaccard': seg_metric.get_metric_multi,
-            'dice': seg_metric.get_metric_multi
+            'jaccard': seg_metric.get_metric_multi_per_class,
+            'dice': seg_metric.get_metric_multi_per_class
         }
     },
     'detection': {

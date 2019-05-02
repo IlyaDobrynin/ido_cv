@@ -3,7 +3,7 @@ from __future__ import print_function
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ...utils import one_hot_embedding
+from ...common_utils import one_hot_embedding
 from torch.autograd import Variable
 
 

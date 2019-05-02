@@ -11,7 +11,8 @@ import torch
 from torch.utils.data import Dataset
 from albumentations.torch.functional import img_to_tensor
 from ..encoder_alt import DataEncoder
-from ...utils.images_transform import pad, resize
+from ...utils.image_utils import pad
+from ...utils.image_utils import resize
 
 
 class RetinaDataset(Dataset):

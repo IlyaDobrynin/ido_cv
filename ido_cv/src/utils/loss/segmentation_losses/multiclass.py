@@ -101,44 +101,59 @@ def get_weight(trues, weight_type=0):
 
 
 class BceMetricMulti:
-    def __init__(self, jaccard_weight=0.3, metric='jaccard', class_weights=None, num_classes=11):
-        # if class_weights is not None:
-        #     nll_weight = utils.cuda(
-        #         torch.from_numpy(class_weights.astype(np.float32)))
-        # else:
-        #     nll_weight = None
+    def __init__(self, alpha: float = 0.3, metric: str = 'jaccard', class_weights: list = None,
+                 num_classes=11, ignore_class: int = None):
         self.nll_loss = nn.CrossEntropyLoss()
-        self.jaccard_weight = jaccard_weight
+        self.alpha = alpha
         self.num_classes = num_classes
         self.metric = metric
+        self.ignore_class = ignore_class
+
+    def __call__(self, preds: torch.Tensor, trues: torch.Tensor):
+        metric_output = torch.softmax(preds, dim=1)
+
+        loss = 0
+        for i in range(metric_output.shape[1]):
+            if i == self.ignore_class:
+                continue
+            metric_target_cls = (trues == i).float()
+            metric_output_cls = metric_output[:, i, ...].unsqueeze(1)
+
+            self.bce_loss = nn.BCEWithLogitsLoss()
+            bce_loss = self.bce_loss(metric_output_cls, metric_target_cls)
+            if self.metric:
+                if self.metric == 'jaccard':
+                    metric_coef = jaccard_coef(metric_target_cls, metric_output_cls)
+                elif self.metric == 'dice':
+                    metric_coef = dice_coef(metric_target_cls, metric_output_cls)
+                else:
+                    raise NotImplementedError(
+                        "Metric {} doesn't implemented. Variants: 'jaccard;, 'dice', None".format(
+                            self.metric))
+                loss += (1 - self.alpha) * bce_loss - self.alpha * torch.log(metric_coef)
+            else:
+                loss += bce_loss
+
+        if self.ignore_class is not None:
+            ignore = 1
+        else:
+            ignore = 0
+
+        loss = loss / (metric_output.shape[1] - ignore)
+        return loss
+
+
+class LovaszLoss:
+
+    def __init__(self, ignore=0):
+        if ignore is not None:
+            self.ignore = ignore
+        else:
+            self.ignore = None
 
     def __call__(self, outputs, targets):
-        targets = targets.squeeze(1)
-        # loss = (1 - self.jaccard_weight) * self.nll_loss(outputs, targets)
-        loss = self.nll_loss(outputs, targets)
-        # print('loss.loss', loss)
-        # if self.from_logits:
-        # loss_acc = []
-        # if self.jaccard_weight:
-        #     for cls in range(0, self.num_classes):
-        #         jaccard_target = (targets == cls).float()
-        #         jaccard_output = outputs[:, cls, ...].exp()
-        #         if self.metric == 'jaccard':
-        #             metric_coef = jaccard_coef
-        #         elif self.metric == 'dice':
-        #             metric_coef = dice_coef
-        #         else:
-        #             raise NotImplementedError(
-        #                 f"Metric {self.metric} doesn't implemented. "
-        #                 f"Variants: 'jaccard;, 'dice'"
-        #             )
-        #         metric_idx = metric_coef(jaccard_output, jaccard_target, weight=None)
-                # print(f'loss.metric_idx {cls}', metric_idx)
-                # loss_acc.append(metric_idx)
-                # loss -= (torch.log(metric_idx)) * self.jaccard_weight
-                # print(loss)
-        # loss = (sum(loss_acc)/len(loss_acc))
-        # print('loss.loss', loss)
+        outputs = F.softmax(outputs, dim=1)
+        loss = lovasz_softmax(probas=outputs, labels=targets, ignore=self.ignore)
         return loss
     
     
@@ -177,20 +192,6 @@ def iou(preds, labels, C, EMPTY=1., ignore=None, per_image=False):
         ious.append(iou)
     ious = [mean(iou) for iou in zip(*ious)] # mean accross images if per_image
     return 100 * np.array(ious)
-
-
-class LovaszLoss:
-    
-    def __init__(self, ignore=0):
-        if ignore is not None:
-            self.ignore = ignore
-        else:
-            self.ignore = None
-        
-    def __call__(self, outputs, targets):
-        outputs = F.softmax(outputs, dim=1)
-        loss = lovasz_softmax(probas=outputs, labels=targets, ignore=self.ignore)
-        return loss
         
 
 def lovasz_softmax(probas, labels, classes='present', per_image=False, ignore=None):
@@ -204,8 +205,12 @@ def lovasz_softmax(probas, labels, classes='present', per_image=False, ignore=No
       ignore: void class labels
     """
     if per_image:
-        loss = mean(lovasz_softmax_flat(*flatten_probas(prob.unsqueeze(0), lab.unsqueeze(0), ignore), classes=classes)
-                          for prob, lab in zip(probas, labels))
+        loss = mean(
+            lovasz_softmax_flat(
+                *flatten_probas(prob.unsqueeze(0), lab.unsqueeze(0), ignore),
+                classes=classes
+            ) for prob, lab in zip(probas, labels)
+        )
     else:
         loss = lovasz_softmax_flat(*flatten_probas(probas, labels, ignore), classes=classes)
     return loss
