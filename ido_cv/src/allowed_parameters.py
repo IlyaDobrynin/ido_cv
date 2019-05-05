@@ -1,5 +1,6 @@
 from .models.detection.retinanet import RetinaNet
 from .models.segmentation.unet_factory import UnetFactory
+from .models.segmentation.fpn_factory import FPNFactory
 from .models.segmentation.deeplabv3 import DeepLabV3
 from .models.classification.classification_factory import ClassifierFactory
 from .utils.loss.detection_losses.detection_losses import FocalLoss
@@ -81,16 +82,39 @@ MODELS = {
                     'num_filters': 32,
                     'pretrained': 'imagenet',
                     'unfreeze_encoder': True,
+                    'custom_enc_start': False,
                     'num_input_channels': 3,
                     'dropout_rate': 0.2,
                     'bn_type': 'default',
                     'conv_type': 'default',
+                    'upscale_mode': 'nearest',
                     'depthwise': False,
                     'residual': True,
                     'mid_block': None,
                     'dilate_depth': 1,
                     'gau': False,
                     'hypercolumn': True,
+                    'se_decoder': True
+                }
+            },
+            'fpn': {
+                'class': FPNFactory,
+                'default_parameters': {
+                    'backbone': 'resnet34',
+                    'depth': 4,
+                    'num_classes': 1,
+                    'num_filters': 32,
+                    'pretrained': 'imagenet',
+                    'unfreeze_encoder': True,
+                    'custom_enc_start': False,
+                    'num_input_channels': 3,
+                    'dropout_rate': 0.2,
+                    'upscale_mode': 'nearest',
+                    'depthwise': False,
+                    'bn_type': 'default',
+                    'conv_type': 'default',
+                    'residual': True,
+                    'gau': False,
                     'se_decoder': True
                 }
             },
@@ -119,10 +143,12 @@ MODELS = {
                     'num_filters': 32,
                     'pretrained': 'imagenet',
                     'unfreeze_encoder': True,
+                    'custom_enc_start': False,
                     'num_input_channels': 3,
                     'dropout_rate': 0.2,
                     'bn_type': 'default',
                     'conv_type': 'default',
+                    'upscale_mode': 'nearest',
                     'depthwise': False,
                     'residual': True,
                     'mid_block': None,
@@ -130,6 +156,27 @@ MODELS = {
                     'gau': False,
                     'hypercolumn': True,
                     'se_decoder': False,
+                }
+            },
+            'fpn': {
+                'class': FPNFactory,
+                'default_parameters': {
+                    'backbone': 'resnet34',
+                    'depth': 4,
+                    'num_classes': 11,
+                    'num_filters': 32,
+                    'pretrained': 'imagenet',
+                    'unfreeze_encoder': True,
+                    'custom_enc_start': False,
+                    'num_input_channels': 3,
+                    'dropout_rate': 0.2,
+                    'upscale_mode': 'nearest',
+                    'depthwise': False,
+                    'bn_type': 'default',
+                    'conv_type': 'default',
+                    'residual': True,
+                    'gau': False,
+                    'se_decoder': True
                 }
             },
             'deeplabv3': {

@@ -46,8 +46,8 @@ parameters = dict(
     # path_to_weights=None,
 
     task='segmentation',
-    mode='binary',
-    # mode='multi',
+    # mode='binary',
+    mode='multi',
     model_name='unet',
     # model_name='deeplabv3',
     # loss_name='lovasz',
@@ -60,7 +60,7 @@ parameters = dict(
     # device_ids=[0],
     workers=12,
     batch_size=32,
-    learning_rate=0.0003,
+    learning_rate=0.001,
     epochs=200,
     in_size_orig=(45, 256),
     # in_size_orig=(720, 720),
@@ -97,7 +97,7 @@ parameters = dict(
     validate_dates=False,
 
     # Postproc
-    postproc_test=False,
+    postproc_test=True,
 
     # Save outputs parameters
     default_threshold=0.5,

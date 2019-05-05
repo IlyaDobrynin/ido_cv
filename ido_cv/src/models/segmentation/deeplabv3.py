@@ -19,48 +19,25 @@ from ..nn_blocks.deeplab_blocks import Decoder
 
 
 class DeepLabV3(EncoderCommon):
-    
     def __init__(self, backbone, num_classes=1, pretrained='imagenet', unfreeze_encoder=True,
-                 num_input_channels=3, bn_type='default', conv_type='default', residual=False,
-                 se_decoder=False):
+                 num_input_channels=3, bn_type='default', residual=False, se_decoder=False):
 
         super(DeepLabV3, self).__init__(backbone=backbone,
                                         pretrained=pretrained,
                                         depth=5,
                                         unfreeze_encoder=unfreeze_encoder)
-        if conv_type == 'default':
-            self.ConvBlock = nn.Conv2d
-        elif conv_type == 'partial':
-            self.ConvBlock = PartialConv2d
-        else:
-            raise ValueError(
-                'Wrong type of convolution: {}. Should be "default" or "partial"'.format(
-                    conv_type
-                )
-            )
-        if bn_type == 'default':
-            self.BatchNorm = nn.BatchNorm2d
-        elif conv_type == 'sync':
-            self.BatchNorm = SynchronizedBatchNorm2d
-        else:
-            raise ValueError(
-                'Wrong type of batch normalization: {}. Should be "default" or "sync"'.format(
-                    conv_type
-                )
-            )
         self.num_classes = num_classes
         self.num_input_channels = num_input_channels
         self.bn_type = bn_type
-        self.conv_type = conv_type
         self.residual = residual
         self.se_decoder = se_decoder
         self.encoder_filters = encoder_dict[backbone]['filters']
         self.aspp = ASPP(in_channels=self.encoder_filters[-1],
                          output_stride=16,
-                         BatchNorm=self.BatchNorm)
+                         bn_type=self.bn_type)
         self.decoder_block = Decoder(low_level_inplanes=self.encoder_filters[1],
                                      num_classes=num_classes,
-                                     BatchNorm=self.BatchNorm,
+                                     bn_type=self.bn_type,
                                      residual=self.residual,
                                      se_decoder=self.se_decoder)
     
@@ -84,7 +61,7 @@ if __name__ == '__main__':
     input_size = (3, 256, 256)
     model = DeepLabV3(
         backbone=backbone_name, num_classes=1, pretrained='imagenet',
-        num_input_channels=3, conv_type='partial', residual=True, se_decoder=False
+        num_input_channels=3, residual=True, se_decoder=False
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
