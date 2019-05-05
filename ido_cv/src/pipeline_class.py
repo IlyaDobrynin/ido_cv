@@ -143,10 +143,11 @@ class Pipeline(AbstractPipeline):
         self.random_seed = random_seed
         self.time = time
 
-    def get_dataloaders(self, path_to_dataset=None, data_file=None, batch_size=1, is_train=True,
-                        workers=1, shuffle=False, augs=False):
+    def get_dataloaders(self, dataset_class=None, path_to_dataset=None, data_file=None,
+                        batch_size=1, is_train=True, workers=1, shuffle=False, augs=False):
         """ Function to make train data loaders
 
+        :param dataset_class: Dataset class
         :param path_to_dataset: Path to the images
         :param data_file: Data file
         :param batch_size: Size of data minibatch
@@ -160,44 +161,45 @@ class Pipeline(AbstractPipeline):
             augmentations = Augmentations(is_train).transform
         else:
             augmentations = None
-        if self.task == 'detection':
-            dataset_class = RetinaDataset(root=path_to_dataset,
-                                          labels_file=os.path.join(path_to_dataset, 'labels.csv'),
-                                          initial_size=self.img_size_orig,
-                                          model_input_size=self.img_size_target,
-                                          train=is_train,
-                                          augmentations=augmentations)
-            # dataset_class = None
-        elif self.task == 'segmentation':
-            if self.mode == 'binary':
-                dataset_class = BinSegDataset(
+        if dataset_class is None:
+            if self.task == 'detection':
+                dataset_class = RetinaDataset(root=path_to_dataset,
+                                              labels_file=os.path.join(path_to_dataset, 'labels.csv'),
+                                              initial_size=self.img_size_orig,
+                                              model_input_size=self.img_size_target,
+                                              train=is_train,
+                                              augmentations=augmentations)
+                # dataset_class = None
+            elif self.task == 'segmentation':
+                if self.mode == 'binary':
+                    dataset_class = BinSegDataset(
+                        data_path=path_to_dataset,
+                        data_file=data_file,
+                        train=is_train,
+                        initial_size=self.img_size_orig,
+                        model_input_size=self.img_size_target,
+                        add_depth=False,
+                        augmentations=augmentations
+                    )
+                else:  # self.mode == 'multi':
+                    dataset_class = MultSegDataset(
+                        data_path=path_to_dataset,
+                        data_file=data_file,
+                        train=is_train,
+                        initial_size=self.img_size_orig,
+                        model_input_size=self.img_size_target,
+                        add_depth=False,
+                        augmentations=augmentations
+                    )
+            else:  # self.task == 'classification'
+                dataset_class = ClassifyDataset(
                     data_path=path_to_dataset,
                     data_file=data_file,
                     train=is_train,
                     initial_size=self.img_size_orig,
                     model_input_size=self.img_size_target,
-                    add_depth=False,
                     augmentations=augmentations
                 )
-            else:  # self.mode == 'multi':
-                dataset_class = MultSegDataset(
-                    data_path=path_to_dataset,
-                    data_file=data_file,
-                    train=is_train,
-                    initial_size=self.img_size_orig,
-                    model_input_size=self.img_size_target,
-                    add_depth=False,
-                    augmentations=augmentations
-                )
-        else:  # self.task == 'classification'
-            dataset_class = ClassifyDataset(
-                data_path=path_to_dataset,
-                data_file=data_file,
-                train=is_train,
-                initial_size=self.img_size_orig,
-                model_input_size=self.img_size_target,
-                augmentations=augmentations
-            )
 
         dataloader = DataLoader(dataset_class,
                                 batch_size=batch_size,
@@ -311,7 +313,7 @@ class Pipeline(AbstractPipeline):
 
         # Train the model for one epoch
         model.train()
-        for data in dataloader:
+        for data in tqdm(dataloader):
             batch_num += 1
 
             # Get the loss for this mini-batch of inputs/outputs

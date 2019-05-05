@@ -9,9 +9,10 @@ from ... import dirs
 from ..pipeline_class import Pipeline
 
 
-def prediction(model, pipeline: Pipeline, data_path: str, batch_size: int = 1, workers: int = 1,
-               threshold: float = None, postprocess: bool = False, output_path: str = '',
-               show_preds: bool = False, save_preds: bool = False, **kwargs):
+def prediction(model, pipeline: Pipeline, dataset_class=None, data_path: str = None,
+               batch_size: int = 1, workers: int = 1, threshold: float = None,
+               postprocess: bool = False, output_path: str = '', show_preds: bool = False,
+               save_preds: bool = False, **kwargs):
     """ Inference process
 
     :param model: Model class
@@ -37,6 +38,7 @@ def prediction(model, pipeline: Pipeline, data_path: str, batch_size: int = 1, w
         nms_thresh = None
 
     test_loader = pipeline.get_dataloaders(
+        dataset_class=dataset_class,
         path_to_dataset=data_path,
         batch_size=batch_size,
         is_train=False,
