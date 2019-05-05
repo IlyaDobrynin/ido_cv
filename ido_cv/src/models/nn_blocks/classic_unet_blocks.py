@@ -13,26 +13,32 @@ class DecoderBlock(nn.Module):
     """
     
     def __init__(self, in_skip_ch, in_dec_ch, out_channels, dropout_rate=0.2, depthwise=False,
-                 bn_type='default', conv_type='default', se_include=False):
+                 upscale_mode='nearest', bn_type='default', conv_type='default', se_include=False,
+                 se_reduction=16):
         super(DecoderBlock, self).__init__()
         in_channels = in_skip_ch + in_dec_ch
         self.se_include = se_include
+        self.upscale_mode = upscale_mode
 
         # Initialize layers
-        self.conv_bn_relu = ConvBnRelu(in_channels, out_channels, kernel_size=3, padding=1,
-                                       conv_type=conv_type, bn_type=bn_type)
-        self.conv = Conv(out_channels, out_channels, kernel_size=3, padding=1, depthwise=depthwise,
-                         conv_type=conv_type)
+        conv_params = dict(
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=1,
+            depthwise=depthwise,
+            conv_type=conv_type
+        )
+        self.conv_bn_relu = ConvBnRelu(in_channels=in_channels, bn_type=bn_type, **conv_params)
+        self.conv = Conv(in_channels=out_channels, **conv_params)
         self.bn = BatchNorm(out_channels, bn_type=bn_type)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout2d(p=dropout_rate)
         if self.se_include:
-            self.se_block = SCSEBlock(out_channels, reduction=16)
+            self.se_block = SCSEBlock(out_channels, reduction=se_reduction)
 
     def forward(self, x, skip):
-        scale_factor = int(skip[0].shape[-1] // x.shape[-1])
-        if scale_factor > 1:
-            x = F.interpolate(x, scale_factor=scale_factor, mode='nearest')
+        h, w = skip[0].size()[2], skip[0].size()[3]
+        x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
         skip.append(x)
         x = torch.cat(skip, 1)
         x = self.dropout(x)
@@ -40,30 +46,31 @@ class DecoderBlock(nn.Module):
         x = self.conv(x)
         x = self.bn(x)
         if self.se_include:
-            out = self.se_block(x) + x
-        else:
-            out = x
-        out = self.relu(out)
-        return out
+            x = self.se_block(x) + x
+        x = self.relu(x)
+        return x
     
     
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, depthwise=False, add_relu=True,
-                 add_se=False, bn_type='default', conv_type='default'):
+    def __init__(self, in_channels, out_channels, depthwise=False, bn_type='default',
+                 conv_type='default', add_se=False, se_reduction=16):
         super(ResidualBlock, self).__init__()
-        self.add_relu = add_relu
         self.add_se = add_se
 
         # Initialize layers
-        self.conv_bn_relu_1 = ConvBnRelu(in_channels, out_channels, kernel_size=3, padding=1,
-                                         conv_type=conv_type, bn_type=bn_type)
-        self.conv_bn_relu_2 = ConvBnRelu(out_channels, out_channels, kernel_size=3, padding=1,
-                                         conv_type=conv_type, bn_type=bn_type)
-        self.conv = Conv(in_channels=out_channels, out_channels=out_channels, kernel_size=3,
-                         padding=1, depthwise=depthwise, conv_type=conv_type)
+        conv_params = dict(
+            out_channels=out_channels,
+            kernel_size=3,
+            padding=1,
+            depthwise=depthwise,
+            conv_type=conv_type
+        )
+        self.conv_bn_relu_1 = ConvBnRelu(in_channels=in_channels, bn_type=bn_type, **conv_params)
+        self.conv_bn_relu_2 = ConvBnRelu(in_channels=out_channels, bn_type=bn_type, **conv_params)
+        self.conv = Conv(in_channels=out_channels, **conv_params)
         self.bn = BatchNorm(out_channels, bn_type=bn_type)
         if self.add_se:
-            self.se_block = SCSEBlock(out_channels, reduction=16)
+            self.se_block = SCSEBlock(out_channels, reduction=se_reduction)
         self.relu = nn.ReLU(inplace=True)
         
     def forward(self, x):
@@ -75,8 +82,7 @@ class ResidualBlock(nn.Module):
         if self.add_se:
             out = self.se_block(out)
         out = out + residual
-        if self.add_relu:
-            out = self.relu(out)
+        out = self.relu(out)
         return out
 
 
@@ -85,39 +91,41 @@ class DecoderBlockResidual(nn.Module):
     link https://distill.pub/2016/deconv-checkerboard/
     """
     
-    def __init__(self, in_skip_ch, in_dec_ch, inside_channels, dropout_rate=0.2, se_include=False,
-                 depthwise=False, bn_type='default', conv_type='default'):
+    def __init__(self, in_skip_ch, in_dec_ch, inside_channels, dropout_rate=0.2, depthwise=False,
+                 upscale_mode='nearest', bn_type='default', conv_type='default',  se_include=False,
+                 se_reduction=16):
         super(DecoderBlockResidual, self).__init__()
         self.se_include = se_include
+        self.upscale_mode = upscale_mode
 
         # Initialize layers
-        self.conv_bn_relu = ConvBnRelu(in_channels=in_skip_ch + in_dec_ch,
-                                       out_channels=inside_channels, kernel_size=1,
-                                       depthwise=depthwise, conv_type=conv_type, bn_type=bn_type)
-        self.residual_1 = ResidualBlock(in_channels=inside_channels,
-                                        out_channels=inside_channels,
-                                        depthwise=depthwise,
-                                        add_se=se_include,
-                                        bn_type=bn_type,
-                                        conv_type=conv_type)
-        self.residual_2 = ResidualBlock(in_channels=inside_channels,
-                                        out_channels=inside_channels,
-                                        depthwise=depthwise,
-                                        add_relu=False,
-                                        add_se=se_include,
-                                        bn_type=bn_type,
-                                        conv_type=conv_type)
+        # self.conv_bn_relu = ConvBnRelu(in_channels=in_skip_ch + in_dec_ch,
+        #                                out_channels=inside_channels, kernel_size=1,
+        #                                depthwise=depthwise, conv_type=conv_type, bn_type=bn_type)
+        self.conv = Conv(in_channels=in_skip_ch + in_dec_ch, out_channels=inside_channels,
+                         kernel_size=1, depthwise=depthwise, conv_type=conv_type)
+        residual_parameters = dict(
+            in_channels=inside_channels,
+            out_channels=inside_channels,
+            depthwise=depthwise,
+            bn_type=bn_type,
+            conv_type=conv_type,
+            add_se=se_include,
+            se_reduction=se_reduction
+        )
+        self.residual_1 = ResidualBlock(**residual_parameters)
+        self.residual_2 = ResidualBlock(**residual_parameters)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout2d(p=dropout_rate)
     
     def forward(self, x, skip):
-        h, w = skip[0].size()[2], skip[0].size()[3],
-        x = F.interpolate(x, size=(h, w), mode='nearest')
+        h, w = skip[0].size()[2], skip[0].size()[3]
+        x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
         skip.append(x)
         x = torch.cat(skip, 1)
         x = self.dropout(x)
-        x = self.conv_bn_relu(x)
+        # x = self.conv_bn_relu(x)
+        x = self.conv(x)
         out = self.residual_1(x)
         out = self.residual_2(out)
-        out = self.relu(out)
         return out
