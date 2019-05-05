@@ -105,7 +105,7 @@ def resize(img, boxes=None, size=256, max_size=10000, interpolation=cv2.INTER_AR
     return out_image
 
 
-def resize_image(image: np.ndarray, size: tuple, interpolation=cv2.INTER_AREA):
+def resize_image(image: np.ndarray, size: (int, tuple), interpolation=cv2.INTER_AREA):
     """ Function resize given image to the size
 
     :param image: input image
@@ -114,7 +114,15 @@ def resize_image(image: np.ndarray, size: tuple, interpolation=cv2.INTER_AREA):
     :return:
     """
     h_i, w_i = image.shape[0], image.shape[1]
-    h, w = size
+
+    if type(size) == int:
+        h = w = size
+    elif type(size) == tuple:
+        h, w = size
+    else:
+        raise TypeError(
+            f'Wrong type of size: {type(size)}. Should be int or tuple.'
+        )
     if h == h_i and w == w_i:
         return image
     image = cv2.resize(image, (w, h), interpolation=interpolation)

@@ -149,7 +149,6 @@ class Pipeline(AbstractPipeline):
 
         :param path_to_dataset: Path to the images
         :param data_file: Data file
-        :param path_to_labels: Path to the images labels
         :param batch_size: Size of data minibatch
         :param is_train: Flag to specify dataloader type (train or test)
         :param workers: Number of multithread workers
@@ -207,8 +206,8 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list=None, cudnn_bench: bool=False,
-                  path_to_weights: str=None, model_parameters: dict=None) -> tuple:
+    def get_model(self, model_name: str, device_ids: list = None, cudnn_bench: bool = False,
+                  path_to_weights: str = None, model_parameters: dict = None) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
