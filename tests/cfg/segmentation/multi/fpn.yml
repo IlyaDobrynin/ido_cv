@@ -1,0 +1,16 @@
+backbone: 'resnet34'
+depth: 4
+num_classes: 11
+num_filters: 32
+pretrained: 'imagenet'
+unfreeze_encoder: True
+custom_enc_start: False
+num_input_channels: 3
+dropout_rate: 0.2
+upscale_mode: 'nearest'
+depthwise: False
+bn_type: 'default'
+conv_type: 'default'
+residual: True
+gau: False
+se_decoder: True

@@ -1,17 +1,19 @@
-backbone: 'se_resnext50'
-depth: 5
+backbone: 'resnet34'
+depth: 4
 num_classes: 1
 num_filters: 32
 pretrained: 'imagenet'
 unfreeze_encoder: True
+custom_enc_start: False
 num_input_channels: 3
-dropout_rate: 0.2
+dropout_rate: 0.0
 bn_type: 'default'
 conv_type: 'default'
+upscale_mode: 'nearest'
 depthwise: False
-residual: True
+residual: False
 mid_block:
 dilate_depth: 1
 gau: False
-hypercolumn: True
-se_decoder: True
+hypercolumn: False
+se_decoder: False
