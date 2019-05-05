@@ -8,12 +8,11 @@ import gc
 import torch
 from torch import nn
 from torch.nn import functional as F
-from ..backbones import backbone_factory
 from ..nn_blocks.classic_unet_blocks import DecoderBlock
 from ..nn_blocks.classic_unet_blocks import DecoderBlockResidual
 from ..nn_blocks.encoders import EncoderCommon
+from ..nn_blocks.common_blocks import Conv
 from ..nn_blocks.common_blocks import ConvBnRelu
-from ..nn_blocks.common_blocks import PartialConv2d
 from ..nn_blocks.pan_blocks import FPABlock
 from ..nn_blocks.pan_blocks import GAUBlockUnet
 from ..nn_blocks.vortex_block import VortexPooling
@@ -34,27 +33,34 @@ class UnetFactory(EncoderCommon):
     Partial convolution:        https://arxiv.org/pdf/1811.11718.pdf
     
     Arguments:
-        backbone:           name of the u-net encoder line.
+        backbone:           Name of the u-net encoder line.
                             Should be in backbones.backbone_factory.backbones.keys()
-        depth:              depth of the u-net encoder. Should be in [1, 5] interval.
-        num_classes:        amount of output classes to predict
-        num_filters:        number of filters in first convolution layer
-        pretrained:         name of the pretrain weights. 'imagenet' or None
+        depth:              Depth of the u-net encoder. Should be in [1, 5] interval.
+        num_classes:        Amount of output classes to predict
+        num_filters:        Number of filters in first convolution layer. All filters based on this
+                            value.
+        pretrained:         Name of the pretrain weights. 'imagenet' or None
         unfreeze_encoder:   Flag to unfreeze encoder weights
-        num_input_channels: amount of input channels
-        dropout_rate:       model dropout rate
-        conv_type:          decoder conv layer type:
+        num_input_channels: Amount of input channels
+        dropout_rate:       Model dropout rate
+        bn_type:            Decoder batchnorm type:
+                                'default' - normal nn.BatchNorm2d
+                                'sync' - synchronized batсhnorm
+        conv_type:          Decoder conv layer type:
                                 'default' - sunple nn.Conv2d
                                 'partial' - Partial convolution
+        upscale_mode:       Decoder upscale method:
+                                'nearest'
+                                'bilinear'
         depthwise:          Flag to use depthwise separable convolution instead of simple
                             torch.nn.Conv2d
         residual:           Flag to include residual decoder block instead of default
         mid_block:          Type of middle bottleneck block.
+                                -  None
                                 - 'vortex'
                                 - 'dilation'
                                 - 'fpa'
                                 - 'fpa_dilation'
-                                -  None
         dilate_depth:       Optional argument if mid_block=='dilation'. Amount of dilation depth.
         gau:                Flag to include PAN-like skip-connection
         hypercolumn:        Flag to include hypercolumn
@@ -62,36 +68,24 @@ class UnetFactory(EncoderCommon):
     """
 
     def __init__(self, backbone, depth=4, num_classes=1, num_filters=32, pretrained='imagenet',
-                 unfreeze_encoder=True, num_input_channels=3, dropout_rate=0.2, bn_type='default',
-                 conv_type='default', depthwise=False, residual=False, mid_block=None,
-                 dilate_depth=1, gau=False, hypercolumn=False, se_decoder=False):
+                 unfreeze_encoder=True, custom_enc_start=False, num_input_channels=3,
+                 dropout_rate=0.2, bn_type='default', conv_type='default', upscale_mode='nearest',
+                 depthwise=False, residual=False, mid_block=None, dilate_depth=1, gau=False,
+                 hypercolumn=False, se_decoder=False):
 
         super(UnetFactory, self).__init__(backbone=backbone,
                                           pretrained=pretrained,
                                           depth=depth,
-                                          unfreeze_encoder=unfreeze_encoder)
-
-        assert backbone in backbone_factory.BACKBONES.keys(), \
-            "Wrong name of backbone: {}. " \
-            "Should be in backbones.backbone_factory.backbones.keys()".format(backbone)
-        
-        if conv_type == 'default':
-            self.ConvBlock = nn.Conv2d
-        elif conv_type == 'partial':
-            self.ConvBlock = PartialConv2d
-        else:
-            raise ValueError(
-                'Wrong type of convolution: {}. Should be "default" or "partial"'.format(
-                    conv_type
-                )
-            )
+                                          unfreeze_encoder=unfreeze_encoder,
+                                          custom_enc_start=custom_enc_start,
+                                          num_input_channels=num_input_channels,
+                                          bn_type=bn_type,
+                                          conv_type=conv_type,
+                                          depthwise=depthwise)
         self.num_classes = num_classes
         self.num_filters = num_filters
-        self.num_input_channels = num_input_channels
         self.dropout_rate = dropout_rate
-        self.bn_type = bn_type
-        self.conv_type = conv_type
-        self.depthwise = depthwise
+        self.upscale_mode = upscale_mode
         self.residual = residual
         self.mid_block = mid_block
         self.gau = gau
@@ -147,18 +141,17 @@ class UnetFactory(EncoderCommon):
  
         if self.hypercolumn:
             self.hypercolumn_layers = self._get_hypercolumn_layers()
-            # self.hc_conv = self.ConvBlock(in_channels=self.num_filters, # * (self.depth + 1),
-            #                               out_channels=self.num_filters,
-            #                               kernel_size=1,
-            #                               padding=0)
-            self.hc_conv = ConvBnRelu(in_channels=self.num_filters, # * (self.depth + 1),
+            # self.hc_conv = Conv(in_channels=self.num_filters,
+            #                     out_channels=self.num_filters,
+            #                     kernel_size=1,
+            #                     depthwise=self.depthwise,
+            #                     conv_type=self.conv_type)
+            self.hc_conv = ConvBnRelu(in_channels=self.num_filters,
                                       out_channels=self.num_filters,
                                       kernel_size=1,
-                                      padding=0,
                                       depthwise=self.depthwise,
                                       bn_type=self.bn_type,
-                                      conv_type=self.conv_type
-                                      )
+                                      conv_type=self.conv_type)
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
         self.first_layer = nn.Sequential(
@@ -181,6 +174,7 @@ class UnetFactory(EncoderCommon):
                 ]
             )
         )
+
         self.final_layer = nn.Conv2d(in_channels=self.num_filters,
                                      out_channels=self.num_classes,
                                      kernel_size=1)
@@ -217,10 +211,13 @@ class UnetFactory(EncoderCommon):
                 in_ch_decoder = self.decoder_filters[rev_i + 1]
             in_ch_encoder = self.encoder_filters[rev_i - 1]
             out_ch = self.encoder_filters[rev_i - 1]
-            gau_block = GAUBlockUnet(in_ch_encoder=in_ch_encoder,
-                                     in_ch_decoder=in_ch_decoder,
+            gau_block = GAUBlockUnet(in_ch_enc=in_ch_encoder,
+                                     in_ch_dec=in_ch_decoder,
                                      out_ch=out_ch,
-                                     conv_type=self.conv_type)
+                                     conv_type=self.conv_type,
+                                     bn_type=self.bn_type,
+                                     depthwise=self.depthwise,
+                                     upscale_mode=self.upscale_mode)
             gau_layers.append(gau_block)
         return gau_layers
 
@@ -248,19 +245,21 @@ class UnetFactory(EncoderCommon):
                                                in_dec_ch=in_dec_ch,
                                                inside_channels=out_channels,
                                                dropout_rate=self.dropout_rate,
-                                               se_include=self.se_decoder,
                                                depthwise=self.depthwise,
+                                               upscale_mode=self.upscale_mode,
                                                bn_type=self.bn_type,
-                                               conv_type=self.conv_type)
+                                               conv_type=self.conv_type,
+                                               se_include=self.se_decoder)
             else:
                 d_block = DecoderBlock(in_skip_ch=in_skip_ch,
                                        in_dec_ch=in_dec_ch,
                                        out_channels=out_channels,
                                        dropout_rate=self.dropout_rate,
-                                       conv_type=self.conv_type,
-                                       se_include=self.se_decoder,
                                        depthwise=self.depthwise,
-                                       bn_type=self.bn_type)
+                                       upscale_mode=self.upscale_mode,
+                                       bn_type=self.bn_type,
+                                       conv_type=self.conv_type,
+                                       se_include=self.se_decoder)
             decoder_layers.append(d_block)
         # print(decoder_layers)
         return decoder_layers
@@ -280,16 +279,13 @@ class UnetFactory(EncoderCommon):
             hc_layers.append(
                 # self.ConvBlock(in_channels=in_channels,
                 #                out_channels=out_channels,
-                #                kernel_size=1,
-                #                padding=0)
+                #                kernel_size=1)
                 ConvBnRelu(in_channels=in_channels,
                            out_channels=out_channels,
                            kernel_size=1,
-                           padding=0,
                            depthwise=self.depthwise,
                            bn_type=self.bn_type,
-                           conv_type=self.conv_type
-                           )
+                           conv_type=self.conv_type)
             )
         return hc_layers
 
@@ -344,12 +340,12 @@ class UnetFactory(EncoderCommon):
         h, w = decoder_list[-1].size(2), decoder_list[-1].size(3)
 
         first_hc = self.hypercolumn_layers[0](encoder_last)
-        first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
+        first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=True)
         hc.append(first_hc.unsqueeze(-1))
         # hc.append(first_hc)
         for i, decoder in enumerate(decoder_list):
             hc_layer = self.hypercolumn_layers[i + 1](decoder)
-            hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=False)
+            hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=True)
             hc.append(hc_layer.unsqueeze(-1))
             # hc.append(hc_layer)
             # out = out + hc_layer
@@ -368,7 +364,6 @@ class UnetFactory(EncoderCommon):
         first_skip = self.first_layer(x)
 
         # Get encoder features
-        # x, encoder_list = self._make_encoder_forward(x)
         x, encoder_list = self._make_encoder_forward(x)
 
         # Middle bottlenecks
@@ -400,10 +395,13 @@ class UnetFactory(EncoderCommon):
 if __name__ == '__main__':
     backbone_name = 'resnet34'
     input_size = (3, 256, 256)
+
     model = UnetFactory(
-        backbone=backbone_name, depth=5, num_classes=1, num_filters=32, pretrained='imagenet',
-        num_input_channels=3, dropout_rate=0.2, conv_type='default', depthwise=False,
-        residual=True, mid_block='fpa', hypercolumn=True, gau=False, se_decoder=False
+        backbone=backbone_name, depth=4, num_classes=3, num_filters=32, pretrained='imagenet',
+        unfreeze_encoder=True, custom_enc_start=False, num_input_channels=3, dropout_rate=0.2,
+        bn_type='default', conv_type='default', upscale_mode='nearest', depthwise=False,
+        residual=True, mid_block='fpa', hypercolumn=True, dilate_depth=1, gau=False,
+        se_decoder=False
     )
     # print(model.state_dict())
     # model = backbone_factory.get_backbone(name=backbone, pretrained='imagenet')
