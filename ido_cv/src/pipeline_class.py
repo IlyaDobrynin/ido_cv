@@ -34,10 +34,9 @@ from .utils.image_utils import unpad_bboxes
 from .utils.image_utils import resize_bboxes
 from .utils.image_utils import unpad
 from .utils.image_utils import resize
-from .utils.image_utils import convert_multilabel_mask
 from .utils.image_utils import draw_images
 from .utils.image_utils import delete_small_instances
-from .utils.common_utils import get_opt_threshold
+from .utils.metric_utils import get_opt_threshold
 from .utils.metrics.detection_metrics import mean_ap
 from .utils.model_utils import write_event
 
@@ -583,11 +582,19 @@ class Pipeline(AbstractPipeline):
                             ]
                     else:  # self.mode == 'multi'
                         outputs = torch.softmax(outputs, dim=1)
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                        pred_batch = outputs.data.cpu().numpy().astype(np.float32)
+                        # true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
+                        true_batch = targets
+                        # pred_batch = outputs.data.cpu().numpy().astype(np.float32)
+                        pred_batch = outputs
                         for m_name, m_func in metrics.items():
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch, metric_name=m_name, ignore_class=None)
+                                m_func(
+                                    true_batch,
+                                    pred_batch,
+                                    metric_name=m_name,
+                                    ignore_class=0,
+                                    # device='cpu')
+                                    device='gpu')
                             ]
                 elif self.task == 'detection':
                     # TODO implement detection metric

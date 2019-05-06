@@ -4,32 +4,10 @@
 """
 import os
 import math
-import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import cv2
 import torch
 import torch.nn as nn
-from .metrics.segmentation_metrics import get_metric
-
-
-def get_opt_threshold(trues, preds, threshold_min=0.1, metric_name='dice'):
-    """ Function returns optimal threshold for prediction images
-
-    :param trues: Ground truth validation masks
-    :param preds: Predicted validation masks
-    :param threshold_min: Minimum threshold value
-    :param metric: Metric for threshold calculation
-    :return:
-    """
-    thresholds = np.linspace(0, 1, 50)
-    preds_new = [np.uint8(preds > threshold) for threshold in tqdm(thresholds)]
-    metrics = np.array([get_metric(trues, pred, metric_name=metric_name) for pred in tqdm(preds_new)])
-    threshold_best_index = np.argmax(metrics)
-    best_metric = metrics[threshold_best_index]
-    best_threshold = thresholds[threshold_best_index] \
-        if thresholds[threshold_best_index] > threshold_min else threshold_min
-    return best_threshold, best_metric
 
 
 def get_mean_and_std(dataset, max_load=10000):

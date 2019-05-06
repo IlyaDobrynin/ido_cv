@@ -46,13 +46,14 @@ LOSSES = {
 METRICS = {
     'segmentation': {
         'binary': {
-            'dice': seg_metric.get_metric,
-            'jaccard': seg_metric.get_metric,
-            'm_iou': seg_metric.get_metric
+            'dice': seg_metric.get_metric_binary,
+            'jaccard': seg_metric.get_metric_binary,
+            'm_iou': seg_metric.get_metric_binary
         },
         'multi': {
             'jaccard': seg_metric.get_metric_multi_per_class,
-            'dice': seg_metric.get_metric_multi_per_class
+            'dice': seg_metric.get_metric_multi_per_class,
+            'm_iou': seg_metric.get_metric_multi_per_class
         }
     },
     'detection': {
