@@ -7,11 +7,6 @@ from ..backbones import backbone_factory
 from ..backbones.pretrain_parameters import encoder_dict
 
 
-# from ido_cv.src.models.nn_blocks.common_blocks import ConvBnRelu
-# from ido_cv.src.models.backbones import backbone_factory
-# from ido_cv.src.models.backbones.pretrain_parameters import encoder_dict
-
-
 class EncoderCommon(nn.Module):
     def __init__(self, backbone, pretrained, depth, unfreeze_encoder, custom_enc_start=False,
                  num_input_channels=None, bn_type='default', conv_type='default', depthwise=False):
@@ -63,44 +58,32 @@ class EncoderCommon(nn.Module):
                 if mk == 'features':
                     if first_enc_layer is None:
                         for i in range(self.depth):
-                            encoder_layer = nn.ModuleList([
-                                dict(mv.named_children())[layer]
-                                for layer in self.encoder_layers_dict[i]
-                            ])
-                            # encoder_layer = nn.ModuleList([])
-                            # for layer in self.encoder_layers_dict[i]:
-                            #     encoder_layer.append(dict(mv.named_children())[layer])
+                            encoder_layer = nn.ModuleList([])
+                            for layer in self.encoder_layers_dict[i]:
+                                encoder_layer.append(dict(mv.named_children())[layer])
                             encoder_list.append(nn.Sequential(*encoder_layer))
                     else:
                         encoder_list.append(first_enc_layer)
                         for i in range(1, self.depth):
-                            encoder_layer = nn.ModuleList([
-                                dict(mv.named_children())[layer]
-                                for layer in self.encoder_layers_dict[i]
-                            ])
+                            encoder_layer = nn.ModuleList([])
+                            for layer in self.encoder_layers_dict[i]:
+                                encoder_layer.append(dict(mv.named_children())[layer])
                             encoder_list.append(nn.Sequential(*encoder_layer))
                 else:
                     continue
         else:
             if first_enc_layer is None:
                 for i in range(self.depth):
-                    encoder_layer = nn.ModuleList([
-                        dict(self.encoder.named_children())[layer]
-                        for layer in self.encoder_layers_dict[i]
-                    ])
-                    # for layer in self.encoder_layers_dict[i]:
-                    #     encoder_layer.append(dict(self.encoder.named_children())[layer])
+                    encoder_layer = nn.ModuleList([])
+                    for layer in self.encoder_layers_dict[i]:
+                        encoder_layer.append(dict(self.encoder.named_children())[layer])
                     encoder_list.append(nn.Sequential(*encoder_layer))
             else:
                 encoder_list.append(first_enc_layer)
                 for i in range(1, self.depth):
-                    encoder_layer = nn.ModuleList([
-                        dict(self.encoder.named_children())[layer]
-                        for layer in self.encoder_layers_dict[i]
-                    ])
-                    # encoder_layer = nn.ModuleList([])
-                    # for layer in self.encoder_layers_dict[i]:
-                    #     encoder_layer.append(dict(self.encoder.named_children())[layer])
+                    encoder_layer = nn.ModuleList([])
+                    for layer in self.encoder_layers_dict[i]:
+                        encoder_layer.append(dict(self.encoder.named_children())[layer])
                     encoder_list.append(nn.Sequential(*encoder_layer))
         del self.encoder
         gc.collect()
@@ -155,7 +138,7 @@ class EncoderCommon(nn.Module):
     
     
 if __name__ == '__main__':
-    backbone_name = 'resnet34'
+    backbone_name = 'resnet18'
     input_size = (3, 256, 256)
     model = EncoderCommon(
         backbone=backbone_name, depth=4, pretrained='imagenet', unfreeze_encoder=True,
