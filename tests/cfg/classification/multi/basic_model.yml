@@ -1,4 +1,4 @@
 backbone: resnet34
-num_classes: 4
+num_classes: 102
 pretrained: 'imagenet'
 unfreeze_encoder: True

@@ -80,6 +80,7 @@ def main_pipe(args):
             print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
                 pipeline=pipe_class, model_name=args['model_name'], path_to_dataset=path_to_train,
+                model_parameters=args['model_parameters'],
                 batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
                 use_augs=args['train_augs'], device_ids=args['device_ids'],
                 cudnn_benchmark=args['cudnn_benchmark'], lr_factor=args['lr_factor'],

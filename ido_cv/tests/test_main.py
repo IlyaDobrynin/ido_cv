@@ -7,7 +7,8 @@ from ..src import allowed_parameters
 
 MODELS = allowed_parameters.MODELS
 LOSSES = allowed_parameters.LOSSES
-METRICS = allowed_parameters.METRICS
+# METRICS = allowed_parameters.METRICS
+METRIC_NAMES = allowed_parameters.METRIC_NAMES
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
 CHECKPOINT_METRICS = allowed_parameters.CHECKPOINT_METRICS
 TTA = allowed_parameters.TTA
@@ -15,8 +16,8 @@ TTA = allowed_parameters.TTA
 
 def test_parameters(parameters):
     for m_name in parameters['valid_metrics']:
-        assert m_name in METRICS[parameters['task']][parameters['mode']].keys(), f"Wrong metric: {m_name}. " \
-            f"Should be one of {METRICS[parameters['task']][parameters['mode']].keys()}"
+        assert m_name in METRIC_NAMES[parameters['task']][parameters['mode']], f"Wrong metric: {m_name}. " \
+            f"Should be one of {METRIC_NAMES[parameters['task']][parameters['mode']]}"
     
     if parameters['tta_list'] is not None:
         for tta in parameters['tta_list']:

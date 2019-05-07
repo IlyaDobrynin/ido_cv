@@ -407,9 +407,9 @@ class Pipeline(AbstractPipeline):
         optimizer = optimizer_dict[self.optim_name]
 
         # Get metric functions
-        metrics = dict()
-        for m_name in metric_names:
-            metrics[m_name] = METRICS[self.task][self.mode][m_name]
+        # metrics = dict()
+        # for m_name in metric_names:
+        #     metrics[m_name] = METRICS[self.task][self.mode][m_name]
 
         # Get learning rate scheduler policy
         if scheduler == 'rop':
@@ -481,7 +481,9 @@ class Pipeline(AbstractPipeline):
             gc.collect()
 
             # Calculate validation metrics
-            val_metrics = self.validation(model=model, dataloader=val_loader, metrics=metrics)
+            val_metrics = self.validation(
+                model=model, dataloader=val_loader, metric_names=metric_names
+            )
 
             # Write epoch parameters to log file
             write_event(log_file, first_step, e, **val_metrics)
@@ -535,19 +537,19 @@ class Pipeline(AbstractPipeline):
 
         return model
 
-    def validation(self, model, dataloader, metrics, verbose=1):
+    def validation(self, model, dataloader, metric_names, verbose=1):
         """ Function to make validation of the model
 
         :param model: Input model to validate
         :param dataloader: Validation dataloader
-        :param metrics: Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param metric_names:
         :param verbose: Flag to include output information
         :return: Validation score and loss
         """
         model.eval()
         losses = list()
         metric_values = dict()
-        for m_name in metrics.keys():
+        for m_name in metric_names:
             metric_values[m_name] = list()
 
         with torch.no_grad():
@@ -574,53 +576,55 @@ class Pipeline(AbstractPipeline):
                 # Calculate metrics
                 if self.task == 'segmentation':
                     if self.mode == 'binary':
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                        pred_batch = np.squeeze(outputs.data.cpu().numpy(), axis=1).astype(np.float32)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='sigmoid', device='gpu'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, (pred_batch > 0.5), metric_name=m_name)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name, threshold=0.5
+                                )
                             ]
                     else:  # self.mode == 'multi'
-                        outputs = torch.softmax(outputs, dim=1)
-                        # true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                        true_batch = targets
-                        # pred_batch = outputs.data.cpu().numpy().astype(np.float32)
-                        pred_batch = outputs
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='softmax', device='gpu'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(
-                                    true_batch,
-                                    pred_batch,
-                                    metric_name=m_name,
-                                    ignore_class=0,
-                                    # device='cpu')
-                                    device='gpu')
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name,
+                                    threshold=0.5, per_class=True, ignore_class=None
+                                )
                             ]
                 elif self.task == 'detection':
                     # TODO implement detection metric
                     metric_values[m_name] += None
                 else:  # self.task == 'classification'
                     if self.mode == 'binary':
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1).astype(np.uint8)
-                        outputs = torch.sigmoid(outputs)
-                        pred_batch = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='sigmoid'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name
+                                )
                             ]
                     else:  # self.mode == 'multi'
                         # TODO сделать мультиклассовую классификацию
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        outputs = torch.softmax(outputs, dim=-1)
-                        pred_batch = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='softmax'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name
+                                )
                             ]
 
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
-        for m_name in metrics.keys():
+        for m_name in metric_names:
             out_metrics[m_name] = np.mean(metric_values[m_name]).astype(np.float64)
 
         # Show information if needed
@@ -852,11 +856,7 @@ class Pipeline(AbstractPipeline):
         if self.task == 'detection':
             out_metrics = mean_ap(true_df=true_df, pred_df=pred_df, iou_thresholds=iou_thresholds)
         elif self.task == 'segmentation':
-            if metric_names is not None:
-                metrics = dict()
-                for m_name in metric_names:
-                    metrics[m_name] = METRICS[self.task][self.mode][m_name]
-            else:
+            if metric_names is None:
                 raise ValueError(
                     f"Wrong metric_names parameter: {metric_names}."
                 )
