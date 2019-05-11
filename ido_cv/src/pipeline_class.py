@@ -207,15 +207,17 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list = None, cudnn_bench: bool = False,
-                  path_to_weights: str = None, model_parameters: dict = None) -> tuple:
+    def get_model(self, model_name: str, device_ids: list=None, cudnn_bench: bool=False,
+                  path_to_weights: str=None, model_parameters: dict=None,
+                  show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
         :param path_to_weights: Path to the trained weights
-        :param model_parameters: Model parameters
+        :param model_parameters: Path to the trained weights
+        :param show_model: Flag to show model
         :return:
         """
         # Get model parameters
@@ -275,6 +277,10 @@ class Pipeline(AbstractPipeline):
                 # return model, initial_parameters
             else:
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
+
+        if show_model:
+            from torchsummary import summary
+            summary(model, input_size=(3, self.img_size_target, self.img_size_target))
 
         return model, initial_parameters, model_parameters
 
