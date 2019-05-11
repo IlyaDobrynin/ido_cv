@@ -617,7 +617,6 @@ class Pipeline(AbstractPipeline):
                                 )
                             ]
                     else:  # self.mode == 'multi'
-                        # TODO сделать мультиклассовую классификацию
                         metric_class = METRICS[self.task](
                             mode=self.mode, activation='softmax'
                         )

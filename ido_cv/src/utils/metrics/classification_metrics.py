@@ -44,6 +44,3 @@ class ClassificationMetrics:
                 f' Should be "accuracy"'
             )
         return metric
-
-
-

@@ -174,9 +174,3 @@ class SegmentationMetrics:
                 f'Wrong device parameter: {device}. Should be "cpu" or "gpu".'
             )
         return metric
-
-
-
-
-
-

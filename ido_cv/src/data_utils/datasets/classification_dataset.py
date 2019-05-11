@@ -10,10 +10,10 @@ import pandas as pd
 import torch
 from albumentations.torch.functional import img_to_tensor
 from torch.utils.data import Dataset
-import matplotlib.pyplot as plt
 from ...utils.image_utils import pad
 from ...utils.image_utils import resize
 from ...utils.image_utils import resize_image
+from ...utils.image_utils import draw_images
 
 
 class ClassifyDataset(Dataset):
@@ -83,7 +83,7 @@ class ClassifyDataset(Dataset):
 
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
-            self._draw_images([viz_image])
+            draw_images([viz_image])
 
         return image, label, str(name)
 
@@ -102,17 +102,8 @@ class ClassifyDataset(Dataset):
 
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
-            self._draw_images([viz_image])
+            draw_images([viz_image])
         return image, str(name)
-
-    @staticmethod
-    def _draw_images(images_list):
-        n_images = len(images_list)
-        fig = plt.figure()
-        for i, image in enumerate(images_list):
-            ax = fig.add_subplot(1, n_images, i + 1)
-            ax.imshow(image)
-        plt.show()
 
     def collate_fn(self, batch):
         '''Pad images and encode targets.

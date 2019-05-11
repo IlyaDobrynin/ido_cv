@@ -27,4 +27,3 @@ from .dilated_resnet import dilated_resnet34
 from .dilated_resnet import dilated_resnet50
 from .dilated_resnet import dilated_resnet101
 from .dilated_resnet import dilated_resnet152
-

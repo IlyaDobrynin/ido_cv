@@ -7,7 +7,6 @@ from ..src import allowed_parameters
 
 MODELS = allowed_parameters.MODELS
 LOSSES = allowed_parameters.LOSSES
-# METRICS = allowed_parameters.METRICS
 METRIC_NAMES = allowed_parameters.METRIC_NAMES
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
 CHECKPOINT_METRICS = allowed_parameters.CHECKPOINT_METRICS
