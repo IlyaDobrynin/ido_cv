@@ -141,17 +141,17 @@ class UnetFactory(EncoderCommon):
  
         if self.hypercolumn:
             self.hypercolumn_layers = self._get_hypercolumn_layers()
-            # self.hc_conv = Conv(in_channels=self.num_filters,
-            #                     out_channels=self.num_filters,
-            #                     kernel_size=1,
-            #                     depthwise=self.depthwise,
-            #                     conv_type=self.conv_type)
-            self.hc_conv = ConvBnRelu(in_channels=self.num_filters,
-                                      out_channels=self.num_filters,
-                                      kernel_size=1,
-                                      depthwise=self.depthwise,
-                                      bn_type=self.bn_type,
-                                      conv_type=self.conv_type)
+            self.hc_conv = Conv(in_channels=self.num_filters,
+                                out_channels=self.num_filters,
+                                kernel_size=1,
+                                depthwise=self.depthwise,
+                                conv_type=self.conv_type)
+            # self.hc_conv = ConvBnRelu(in_channels=self.num_filters,
+            #                           out_channels=self.num_filters,
+            #                           kernel_size=1,
+            #                           depthwise=self.depthwise,
+            #                           bn_type=self.bn_type,
+            #                           conv_type=self.conv_type)
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
         self.first_layer = nn.Sequential(
@@ -277,9 +277,11 @@ class UnetFactory(EncoderCommon):
                 in_channels = self.decoder_filters[-i]
             out_channels = self.num_filters
             hc_layers.append(
-                # self.ConvBlock(in_channels=in_channels,
-                #                out_channels=out_channels,
-                #                kernel_size=1)
+                # Conv(in_channels=in_channels,
+                #      out_channels=out_channels,
+                #      kernel_size=1,
+                #      depthwise=self.depthwise,
+                #      conv_type=self.conv_type)
                 ConvBnRelu(in_channels=in_channels,
                            out_channels=out_channels,
                            kernel_size=1,

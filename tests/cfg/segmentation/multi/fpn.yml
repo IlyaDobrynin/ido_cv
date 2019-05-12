@@ -13,4 +13,4 @@ bn_type: 'default'
 conv_type: 'default'
 residual: True
 gau: False
-se_decoder: True
+se_decoder: False

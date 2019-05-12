@@ -6,14 +6,11 @@ backbones
 """
 import gc
 import torch
-from torch import nn
 from torch.nn import functional as F
 from torchsummary import summary
 
 from ..backbones.pretrain_parameters import encoder_dict
-from ..nn_blocks.common_blocks import PartialConv2d
 from ..nn_blocks.encoders import EncoderCommon
-from ..nn_blocks.custom_layers.sync_batchnorm import SynchronizedBatchNorm2d
 from ..nn_blocks.deeplab_blocks import ASPP
 from ..nn_blocks.deeplab_blocks import Decoder
 

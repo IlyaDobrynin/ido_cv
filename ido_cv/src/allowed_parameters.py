@@ -3,13 +3,14 @@ from .models.segmentation.unet_factory import UnetFactory
 from .models.segmentation.fpn_factory import FPNFactory
 from .models.segmentation.deeplabv3 import DeepLabV3
 from .models.classification.classification_factory import ClassifierFactory
-from .utils.loss.detection_losses.detection_losses import FocalLoss
-from .utils.loss.segmentation_losses.binary import BceMetricBinary
-from .utils.loss.segmentation_losses.multiclass import BceMetricMulti
-from .utils.loss.segmentation_losses.multiclass import LovaszLoss
-from .utils.loss.classification_losses.binary_classification import BCELoss
-from .utils.loss.classification_losses.multi_classification import NllLoss, CELoss
-from .utils.metrics import segmentation_metrics as seg_metric
+from .utils.loss.detection_losses import FocalLoss
+from .utils.loss.segmentation_losses import BinaryBceMetric
+from .utils.loss.segmentation_losses import MultiBceMetric
+from .utils.loss.segmentation_losses import MultiLovasz
+from .utils.loss.classification_losses import BCELoss
+from .utils.loss.classification_losses import NllLoss, CELoss
+from .utils.metrics.segmentation_metrics import SegmentationMetrics
+from .utils.metrics.classification_metrics import ClassificationMetrics
 from .utils.metrics import classification_metrics as cls_metric
 from .utils import tta
 
@@ -17,13 +18,14 @@ from .utils import tta
 LOSSES = {
     'segmentation': {
         'binary': {
-            "bce_jaccard": BceMetricBinary(metric='jaccard', weight_type=None, alpha=0.7),
-            "bce_dice": BceMetricBinary(metric='dice', weight_type=None, alpha=0.7)
+            "bce_jaccard": BinaryBceMetric(metric='jaccard', weight_type=None, alpha=0.7),
+            "bce_dice": BinaryBceMetric(metric='dice', weight_type=None, alpha=0.7),
+            "bce_lovasz": BinaryBceMetric(metric='lovasz', weight_type=None, alpha=0.7, per_image=True)
         },
         'multi': {
-            "bce_jaccard": BceMetricMulti(num_classes=11, metric='jaccard'),
-            "bce_dice": BceMetricMulti(num_classes=11, metric='dice'),
-            "lovasz": LovaszLoss(ignore=0)
+            "bce_jaccard": MultiBceMetric(num_classes=11, metric='jaccard'),
+            "bce_dice": MultiBceMetric(num_classes=11, metric='dice'),
+            "lovasz": MultiLovasz(ignore=0)
         }
     },
     'detection': {
@@ -43,31 +45,28 @@ LOSSES = {
     }
 }
 
-METRICS = {
+METRIC_NAMES = {
     'segmentation': {
-        'binary': {
-            'dice': seg_metric.get_metric,
-            'jaccard': seg_metric.get_metric,
-            'm_iou': seg_metric.get_metric
-        },
-        'multi': {
-            'jaccard': seg_metric.get_metric_multi_per_class,
-            'dice': seg_metric.get_metric_multi_per_class
-        }
+        'binary': ['dice', 'jaccard', 'm_iou'],
+        'multi': ['dice', 'jaccard', 'm_iou'],
     },
+    'detection': {
+        'all': ['map']
+    },
+    'classification': {
+        'binary': ['accuracy'],
+        'multi': ['accuracy']
+    }
+}
+
+METRICS = {
+    'segmentation': SegmentationMetrics,
     'detection': {
         'all': {
             'map': None,
         }
     },
-    'classification': {
-        'binary': {
-            'accuracy': cls_metric.accuracy
-        },
-        'multi': {
-            'accuracy': cls_metric.multi_accuracy
-        }
-    }
+    'classification': ClassificationMetrics
 }
 
 MODELS = {

@@ -34,10 +34,9 @@ from .utils.image_utils import unpad_bboxes
 from .utils.image_utils import resize_bboxes
 from .utils.image_utils import unpad
 from .utils.image_utils import resize
-from .utils.image_utils import convert_multilabel_mask
 from .utils.image_utils import draw_images
 from .utils.image_utils import delete_small_instances
-from .utils.common_utils import get_opt_threshold
+from .utils.metric_utils import get_opt_threshold
 from .utils.metrics.detection_metrics import mean_ap
 from .utils.model_utils import write_event
 
@@ -143,10 +142,11 @@ class Pipeline(AbstractPipeline):
         self.random_seed = random_seed
         self.time = time
 
-    def get_dataloaders(self, path_to_dataset=None, data_file=None, batch_size=1, is_train=True,
-                        workers=1, shuffle=False, augs=False):
+    def get_dataloaders(self, dataset_class=None, path_to_dataset=None, data_file=None,
+                        batch_size=1, is_train=True, workers=1, shuffle=False, augs=False):
         """ Function to make train data loaders
 
+        :param dataset_class: Dataset class
         :param path_to_dataset: Path to the images
         :param data_file: Data file
         :param batch_size: Size of data minibatch
@@ -160,44 +160,45 @@ class Pipeline(AbstractPipeline):
             augmentations = Augmentations(is_train).transform
         else:
             augmentations = None
-        if self.task == 'detection':
-            dataset_class = RetinaDataset(root=path_to_dataset,
-                                          labels_file=os.path.join(path_to_dataset, 'labels.csv'),
-                                          initial_size=self.img_size_orig,
-                                          model_input_size=self.img_size_target,
-                                          train=is_train,
-                                          augmentations=augmentations)
-            # dataset_class = None
-        elif self.task == 'segmentation':
-            if self.mode == 'binary':
-                dataset_class = BinSegDataset(
+        if dataset_class is None:
+            if self.task == 'detection':
+                dataset_class = RetinaDataset(root=path_to_dataset,
+                                              labels_file=os.path.join(path_to_dataset, 'labels.csv'),
+                                              initial_size=self.img_size_orig,
+                                              model_input_size=self.img_size_target,
+                                              train=is_train,
+                                              augmentations=augmentations)
+                # dataset_class = None
+            elif self.task == 'segmentation':
+                if self.mode == 'binary':
+                    dataset_class = BinSegDataset(
+                        data_path=path_to_dataset,
+                        data_file=data_file,
+                        train=is_train,
+                        initial_size=self.img_size_orig,
+                        model_input_size=self.img_size_target,
+                        add_depth=False,
+                        augmentations=augmentations
+                    )
+                else:  # self.mode == 'multi':
+                    dataset_class = MultSegDataset(
+                        data_path=path_to_dataset,
+                        data_file=data_file,
+                        train=is_train,
+                        initial_size=self.img_size_orig,
+                        model_input_size=self.img_size_target,
+                        add_depth=False,
+                        augmentations=augmentations
+                    )
+            else:  # self.task == 'classification'
+                dataset_class = ClassifyDataset(
                     data_path=path_to_dataset,
                     data_file=data_file,
                     train=is_train,
                     initial_size=self.img_size_orig,
                     model_input_size=self.img_size_target,
-                    add_depth=False,
                     augmentations=augmentations
                 )
-            else:  # self.mode == 'multi':
-                dataset_class = MultSegDataset(
-                    data_path=path_to_dataset,
-                    data_file=data_file,
-                    train=is_train,
-                    initial_size=self.img_size_orig,
-                    model_input_size=self.img_size_target,
-                    add_depth=False,
-                    augmentations=augmentations
-                )
-        else:  # self.task == 'classification'
-            dataset_class = ClassifyDataset(
-                data_path=path_to_dataset,
-                data_file=data_file,
-                train=is_train,
-                initial_size=self.img_size_orig,
-                model_input_size=self.img_size_target,
-                augmentations=augmentations
-            )
 
         dataloader = DataLoader(dataset_class,
                                 batch_size=batch_size,
@@ -206,15 +207,17 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list = None, cudnn_bench: bool = False,
-                  path_to_weights: str = None, model_parameters: dict = None) -> tuple:
+    def get_model(self, model_name: str, device_ids: list=None, cudnn_bench: bool=False,
+                  path_to_weights: str=None, model_parameters: dict=None,
+                  show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
         :param path_to_weights: Path to the trained weights
-        :param model_parameters: Model parameters
+        :param model_parameters: Path to the trained weights
+        :param show_model: Flag to show model
         :return:
         """
         # Get model parameters
@@ -275,6 +278,10 @@ class Pipeline(AbstractPipeline):
             else:
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
+        if show_model:
+            from torchsummary import summary
+            summary(model, input_size=(3, self.img_size_target, self.img_size_target))
+
         return model, initial_parameters, model_parameters
 
     def find_lr(self, model, dataloader, lr_reduce_factor=1, verbose=1, show_graph=True,
@@ -311,7 +318,7 @@ class Pipeline(AbstractPipeline):
 
         # Train the model for one epoch
         model.train()
-        for data in dataloader:
+        for data in tqdm(dataloader):
             batch_num += 1
 
             # Get the loss for this mini-batch of inputs/outputs
@@ -406,9 +413,9 @@ class Pipeline(AbstractPipeline):
         optimizer = optimizer_dict[self.optim_name]
 
         # Get metric functions
-        metrics = dict()
-        for m_name in metric_names:
-            metrics[m_name] = METRICS[self.task][self.mode][m_name]
+        # metrics = dict()
+        # for m_name in metric_names:
+        #     metrics[m_name] = METRICS[self.task][self.mode][m_name]
 
         # Get learning rate scheduler policy
         if scheduler == 'rop':
@@ -480,7 +487,9 @@ class Pipeline(AbstractPipeline):
             gc.collect()
 
             # Calculate validation metrics
-            val_metrics = self.validation(model=model, dataloader=val_loader, metrics=metrics)
+            val_metrics = self.validation(
+                model=model, dataloader=val_loader, metric_names=metric_names
+            )
 
             # Write epoch parameters to log file
             write_event(log_file, first_step, e, **val_metrics)
@@ -534,19 +543,19 @@ class Pipeline(AbstractPipeline):
 
         return model
 
-    def validation(self, model, dataloader, metrics, verbose=1):
+    def validation(self, model, dataloader, metric_names, verbose=1):
         """ Function to make validation of the model
 
         :param model: Input model to validate
         :param dataloader: Validation dataloader
-        :param metrics: Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param metric_names:
         :param verbose: Flag to include output information
         :return: Validation score and loss
         """
         model.eval()
         losses = list()
         metric_values = dict()
-        for m_name in metrics.keys():
+        for m_name in metric_names:
             metric_values[m_name] = list()
 
         with torch.no_grad():
@@ -573,45 +582,54 @@ class Pipeline(AbstractPipeline):
                 # Calculate metrics
                 if self.task == 'segmentation':
                     if self.mode == 'binary':
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                        pred_batch = np.squeeze(outputs.data.cpu().numpy(), axis=1).astype(np.float32)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='sigmoid', device='gpu'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, (pred_batch > 0.5), metric_name=m_name)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name, threshold=0.5
+                                )
                             ]
                     else:  # self.mode == 'multi'
-                        outputs = torch.softmax(outputs, dim=1)
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1)
-                        pred_batch = outputs.data.cpu().numpy().astype(np.float32)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='softmax', device='gpu'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch, metric_name=m_name, ignore_class=None)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name,
+                                    threshold=0.5, per_class=True, ignore_class=None
+                                )
                             ]
                 elif self.task == 'detection':
                     # TODO implement detection metric
                     metric_values[m_name] += None
                 else:  # self.task == 'classification'
                     if self.mode == 'binary':
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=1).astype(np.uint8)
-                        outputs = torch.sigmoid(outputs)
-                        pred_batch = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='sigmoid'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name
+                                )
                             ]
                     else:  # self.mode == 'multi'
-                        # TODO сделать мультиклассовую классификацию
-                        true_batch = np.squeeze(targets.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        outputs = torch.softmax(outputs, dim=-1)
-                        pred_batch = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        for m_name, m_func in metrics.items():
+                        metric_class = METRICS[self.task](
+                            mode=self.mode, activation='softmax'
+                        )
+                        for m_name in metric_names:
                             metric_values[m_name] += [
-                                m_func(true_batch, pred_batch)
+                                metric_class.get_metric(
+                                    trues=targets, preds=outputs, metric_name=m_name
+                                )
                             ]
 
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
-        for m_name in metrics.keys():
+        for m_name in metric_names:
             out_metrics[m_name] = np.mean(metric_values[m_name]).astype(np.float64)
 
         # Show information if needed
@@ -843,11 +861,7 @@ class Pipeline(AbstractPipeline):
         if self.task == 'detection':
             out_metrics = mean_ap(true_df=true_df, pred_df=pred_df, iou_thresholds=iou_thresholds)
         elif self.task == 'segmentation':
-            if metric_names is not None:
-                metrics = dict()
-                for m_name in metric_names:
-                    metrics[m_name] = METRICS[self.task][self.mode][m_name]
-            else:
+            if metric_names is None:
                 raise ValueError(
                     f"Wrong metric_names parameter: {metric_names}."
                 )

@@ -9,12 +9,12 @@ import numpy as np
 import torch
 from albumentations.torch.functional import img_to_tensor
 from torch.utils.data import Dataset
-import matplotlib.pyplot as plt
 
 from ... import allowed_parameters
 from ...utils.image_utils import pad
 from ...utils.image_utils import resize
 from ...utils.image_utils import resize_image
+from ...utils.image_utils import draw_images
 
 
 def add_depth_channels(image_tensor):
@@ -33,7 +33,7 @@ class BinSegDataset(Dataset):
                  data_file=None, augmentations=None, show_sample=False):
 
         self.train = train
-
+        self.show_sample = show_sample
         if data_path is not None:
             self.data_path = data_path
             self.file_names = os.listdir(os.path.join(self.data_path, 'images'))
@@ -44,8 +44,6 @@ class BinSegDataset(Dataset):
             self.from_path = False
 
         self.initial_size = initial_size
-
-        self.show_sample = show_sample
 
         if not model_input_size:
             self.model_input_size = initial_size
@@ -101,7 +99,7 @@ class BinSegDataset(Dataset):
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             viz_mask = np.moveaxis(mask.data.numpy(), 0, -1)
-            self._draw_sample(viz_image, viz_mask)
+            draw_images([viz_image, viz_mask])
 
         return image, mask, str(name)
     
@@ -121,25 +119,10 @@ class BinSegDataset(Dataset):
 
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
-            self._draw_sample(viz_image)
+            draw_images([viz_image])
 
         image = img_to_tensor(image)
         return image, str(name)
-    
-    @staticmethod
-    def _draw_sample(image, mask=None):
-        # print(np.max(image), np.max(mask))
-        import matplotlib.pyplot as plt
-        fig = plt.figure()
-        if mask is not None:
-            ax = fig.add_subplot(1, 2, 1)
-            ax.imshow(image)
-            ax = fig.add_subplot(1, 2, 2)
-            ax.imshow(mask[:, :, 0])
-        else:
-            ax = fig.add_subplot(1, 1, 1)
-            ax.imshow(image)
-        plt.show()
 
     def collate_fn(self, batch):
         '''Pad images and encode targets.
@@ -178,10 +161,10 @@ class MultSegDataset(Dataset):
     """
     
     def __init__(self, train, initial_size, model_input_size, add_depth=False, data_path=None,
-                 data_file=None, augmentations=None):
+                 data_file=None, augmentations=None, show_sample=False):
 
         self.train = train
-
+        self.show_sample = show_sample
         if data_path is not None:
             self.data_path = data_path
             self.file_names = os.listdir(os.path.join(self.data_path, 'images'))
@@ -243,10 +226,11 @@ class MultSegDataset(Dataset):
             
         image = img_to_tensor(image)
         mask = torch.from_numpy(np.moveaxis(mask, -1, 0)).long()
-        
-        viz_image = np.moveaxis(image.data.numpy(), 0, -1)
-        viz_mask = np.moveaxis(mask.data.numpy(), 0, -1)[:, :, 0]
-        # self._draw_sample(viz_image, viz_mask)
+
+        if self.show_sample:
+            viz_image = np.moveaxis(image.data.numpy(), 0, -1)
+            viz_mask = np.moveaxis(mask.data.numpy(), 0, -1)[:, :, 0]
+            draw_images([viz_image, viz_mask])
         
         return image, mask, str(name)
     
@@ -257,29 +241,8 @@ class MultSegDataset(Dataset):
             image = add_depth_channels(img_to_tensor(image))
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
-        
-        # self._draw_sample(image)
-        
         image = img_to_tensor(image)
         return image, str(name)
-    
-    @staticmethod
-    def _draw_sample(image, mask=None):
-        fig = plt.figure()
-        if mask is not None:
-            ax = fig.add_subplot(1, 2, 1)
-            ax.imshow(image)
-            if mask.shape[-1] == 1:
-                ax = fig.add_subplot(1, 2, 2)
-                ax.imshow(mask[:, :, 0])
-            else:
-                ax = fig.add_subplot(1, 2, 2)
-                ax.imshow(mask)
-        else:
-            ax = fig.add_subplot(1, 1, 1)
-            ax.imshow(image)
-            
-        plt.show()
 
     @staticmethod
     def convert_multilabel_mask(mask, how='rgb2class', n_classes=2, threshold=0.99):

@@ -2,14 +2,9 @@ import gc
 from collections import OrderedDict
 from torch import nn
 
-# from ..nn_blocks.common_blocks import ConvBnRelu
-# from ..backbones import backbone_factory
-# from ..backbones.pretrain_parameters import encoder_dict
-
-
-from ido_cv.src.models.nn_blocks.common_blocks import ConvBnRelu
-from ido_cv.src.models.backbones import backbone_factory
-from ido_cv.src.models.backbones.pretrain_parameters import encoder_dict
+from ..nn_blocks.common_blocks import ConvBnRelu
+from ..backbones import backbone_factory
+from ..backbones.pretrain_parameters import encoder_dict
 
 
 class EncoderCommon(nn.Module):
@@ -52,7 +47,7 @@ class EncoderCommon(nn.Module):
             first_enc_layer = None
         self.encoder_layers = self._get_encoder(first_enc_layer)
     
-    def _get_encoder(self, first_conv):
+    def _get_encoder(self, first_enc_layer):
         """ Function to define u-net encoder layers
 
         :return: List of encoder layers
@@ -61,46 +56,34 @@ class EncoderCommon(nn.Module):
         if self.is_featured:
             for (mk, mv) in self.encoder.named_children():
                 if mk == 'features':
-                    if first_conv is None:
+                    if first_enc_layer is None:
                         for i in range(self.depth):
-                            encoder_layer = nn.ModuleList([
-                                dict(mv.named_children())[layer]
-                                for layer in self.encoder_layers_dict[i]
-                            ])
-                            # encoder_layer = nn.ModuleList([])
-                            # for layer in self.encoder_layers_dict[i]:
-                            #     encoder_layer.append(dict(mv.named_children())[layer])
+                            encoder_layer = nn.ModuleList([])
+                            for layer in self.encoder_layers_dict[i]:
+                                encoder_layer.append(dict(mv.named_children())[layer])
                             encoder_list.append(nn.Sequential(*encoder_layer))
                     else:
-                        encoder_list.append(first_conv)
+                        encoder_list.append(first_enc_layer)
                         for i in range(1, self.depth):
-                            encoder_layer = nn.ModuleList([
-                                dict(mv.named_children())[layer]
-                                for layer in self.encoder_layers_dict[i]
-                            ])
+                            encoder_layer = nn.ModuleList([])
+                            for layer in self.encoder_layers_dict[i]:
+                                encoder_layer.append(dict(mv.named_children())[layer])
                             encoder_list.append(nn.Sequential(*encoder_layer))
                 else:
                     continue
         else:
-            if first_conv is None:
+            if first_enc_layer is None:
                 for i in range(self.depth):
-                    encoder_layer = nn.ModuleList([
-                        dict(self.encoder.named_children())[layer]
-                        for layer in self.encoder_layers_dict[i]
-                    ])
-                    # for layer in self.encoder_layers_dict[i]:
-                    #     encoder_layer.append(dict(self.encoder.named_children())[layer])
+                    encoder_layer = nn.ModuleList([])
+                    for layer in self.encoder_layers_dict[i]:
+                        encoder_layer.append(dict(self.encoder.named_children())[layer])
                     encoder_list.append(nn.Sequential(*encoder_layer))
             else:
-                encoder_list.append(first_conv)
+                encoder_list.append(first_enc_layer)
                 for i in range(1, self.depth):
-                    encoder_layer = nn.ModuleList([
-                        dict(self.encoder.named_children())[layer]
-                        for layer in self.encoder_layers_dict[i]
-                    ])
-                    # encoder_layer = nn.ModuleList([])
-                    # for layer in self.encoder_layers_dict[i]:
-                    #     encoder_layer.append(dict(self.encoder.named_children())[layer])
+                    encoder_layer = nn.ModuleList([])
+                    for layer in self.encoder_layers_dict[i]:
+                        encoder_layer.append(dict(self.encoder.named_children())[layer])
                     encoder_list.append(nn.Sequential(*encoder_layer))
         del self.encoder
         gc.collect()
@@ -149,13 +132,13 @@ class EncoderCommon(nn.Module):
         return x, encoder_list
     
     def forward(self, x):
-        # raise NotImplementedError
-        x, encoder_list = self._make_encoder_forward(x)
-        return x
+        raise NotImplementedError
+        # x, encoder_list = self._make_encoder_forward(x)
+        # return x
     
     
 if __name__ == '__main__':
-    backbone_name = 'resnet34'
+    backbone_name = 'resnet18'
     input_size = (3, 256, 256)
     model = EncoderCommon(
         backbone=backbone_name, depth=4, pretrained='imagenet', unfreeze_encoder=True,

@@ -1,25 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Module implements binary losses
-Implemented losses:
-1. bce_dice loss
-2. bce_jaccard loss
-3. focal_dice loss
-4. focal_jaccard loss
-5. bce_lovasz loss
-
-ToDo: Add moar losses!
+    Utils for torch losses
 
 """
-import numpy as np
-import torch
-from torch import nn
-from torch.nn import functional as F
-
 try:
     from itertools import ifilterfalse
 except ImportError: # py3k
     from itertools import filterfalse as ifilterfalse
+import numpy as np
+import torch
+from torch.nn import functional as F
 
 
 def dice_coef(preds, trues, weight=None):
@@ -37,14 +27,14 @@ def dice_coef(preds, trues, weight=None):
         union = (w * preds).sum() + (w * trues).sum()
     else:
         intersection = (preds * trues).sum()
-        union = (preds).sum() + (trues).sum()
+        union = preds.sum() + trues.sum()
     score = (2. * intersection + eps) / (union + eps)
     return score
 
 
 def jaccard_coef(preds, trues, weight=None):
     """ Function returns binary jaccard coefficient (IoU)
-    
+
     :param preds: Predictions of the network
     :param trues: Ground truth labels
     :param weight: Weight to scale
@@ -57,7 +47,7 @@ def jaccard_coef(preds, trues, weight=None):
         union = (w * preds).sum() + (w * trues).sum()
     else:
         intersection = (preds * trues).sum()
-        union = (preds).sum() + (trues).sum()
+        union = preds.sum() + trues.sum()
     score = (intersection + eps) / (union - intersection + eps)
     return score
 
@@ -100,63 +90,27 @@ def get_weight(trues, weight_type=0):
     return weights
 
 
-class BceMetricMulti:
-    def __init__(self, alpha: float = 0.3, metric: str = 'jaccard', class_weights: list = None,
-                 num_classes=11, ignore_class: int = None):
-        self.nll_loss = nn.CrossEntropyLoss()
-        self.alpha = alpha
-        self.num_classes = num_classes
-        self.metric = metric
-        self.ignore_class = ignore_class
+def lovasz_hinge(logits, labels, per_image=True, ignore=None):
+    """ Binary Lovasz hinge loss
 
-    def __call__(self, preds: torch.Tensor, trues: torch.Tensor):
-        metric_output = torch.softmax(preds, dim=1)
-
-        loss = 0
-        for i in range(metric_output.shape[1]):
-            if i == self.ignore_class:
-                continue
-            metric_target_cls = (trues == i).float()
-            metric_output_cls = metric_output[:, i, ...].unsqueeze(1)
-
-            self.bce_loss = nn.BCEWithLogitsLoss()
-            bce_loss = self.bce_loss(metric_output_cls, metric_target_cls)
-            if self.metric:
-                if self.metric == 'jaccard':
-                    metric_coef = jaccard_coef(metric_target_cls, metric_output_cls)
-                elif self.metric == 'dice':
-                    metric_coef = dice_coef(metric_target_cls, metric_output_cls)
-                else:
-                    raise NotImplementedError(
-                        "Metric {} doesn't implemented. Variants: 'jaccard;, 'dice', None".format(
-                            self.metric))
-                loss += (1 - self.alpha) * bce_loss - self.alpha * torch.log(metric_coef)
-            else:
-                loss += bce_loss
-
-        if self.ignore_class is not None:
-            ignore = 1
-        else:
-            ignore = 0
-
-        loss = loss / (metric_output.shape[1] - ignore)
-        return loss
+      logits: [B, H, W] Variable, logits at each pixel (between -infty and +infty)
+      labels: [B, H, W] Tensor, binary ground truth masks (0 or 1)
+      per_image: compute the loss per image instead of per batch
+      ignore: void class id
+    """
+    if per_image:
+        loss = (
+            lovasz_hinge_flat(
+                *flatten_binary_scores(
+                    log.unsqueeze(0), lab.unsqueeze(0), ignore
+                )
+            ) for log, lab in zip(logits, labels))
+        return mean(loss)
+    else:
+        loss = lovasz_hinge_flat(*flatten_binary_scores(logits, labels, ignore))
+    return loss
 
 
-class LovaszLoss:
-
-    def __init__(self, ignore=0):
-        if ignore is not None:
-            self.ignore = ignore
-        else:
-            self.ignore = None
-
-    def __call__(self, outputs, targets):
-        outputs = F.softmax(outputs, dim=1)
-        loss = lovasz_softmax(probas=outputs, labels=targets, ignore=self.ignore)
-        return loss
-    
-    
 def lovasz_grad(gt_sorted):
     """
     Computes gradient of the Lovasz extension w.r.t sorted errors
@@ -167,32 +121,69 @@ def lovasz_grad(gt_sorted):
     intersection = gts - gt_sorted.float().cumsum(0)
     union = gts + (1 - gt_sorted).float().cumsum(0)
     jaccard = 1. - intersection / union
-    if p > 1: # cover 1-pixel case
+    if p > 1:  # cover 1-pixel case
         jaccard[1:p] = jaccard[1:p] - jaccard[0:-1]
     return jaccard
 
 
-def iou(preds, labels, C, EMPTY=1., ignore=None, per_image=False):
+def lovasz_hinge_flat(logits, labels):
+    """ Binary Lovasz hinge loss
+
+      logits: [P] Variable, logits at each prediction (between -infty and +infty)
+      labels: [P] Tensor, binary ground truth labels (0 or 1)
+      ignore: label to ignore
     """
-    Array of IoU for each (non ignored) class
+    if len(labels) == 0:
+        # only void pixels, the gradients should be 0
+        return logits.sum() * 0.
+    signs = 2. * labels.float() - 1.
+    errors = (1. - logits * torch.Tensor(signs))
+    errors_sorted, perm = torch.sort(errors, dim=0, descending=True)
+    perm = perm.data
+    gt_sorted = labels[perm]
+    grad = lovasz_grad(gt_sorted)
+    loss = torch.dot(F.relu(errors_sorted), torch.Tensor(grad))
+    return loss
+
+
+def flatten_binary_scores(scores, labels, ignore=None):
     """
-    if not per_image:
-        preds, labels = (preds,), (labels,)
-    ious = []
-    for pred, label in zip(preds, labels):
-        iou = []
-        for i in range(C):
-            if i != ignore: # The ignored label is sometimes among predicted classes (ENet - CityScapes)
-                intersection = ((label == i) & (pred == i)).sum()
-                union = ((label == i) | ((pred == i) & (label != ignore))).sum()
-                if not union:
-                    iou.append(EMPTY)
-                else:
-                    iou.append(float(intersection) / float(union))
-        ious.append(iou)
-    ious = [mean(iou) for iou in zip(*ious)] # mean accross images if per_image
-    return 100 * np.array(ious)
-        
+    Flattens predictions in the batch (binary case)
+    Remove labels equal to 'ignore'
+    """
+    scores = scores.view(-1)
+    labels = labels.view(-1)
+    if ignore is None:
+        return scores, labels
+    valid = (labels != ignore)
+    vscores = scores[valid]
+    vlabels = labels[valid]
+    return vscores, vlabels
+
+
+def mean(l, ignore_nan=False, empty=0):
+    """
+    nanmean compatible with generators.
+    """
+    arr = []
+    l = iter(l)
+    if ignore_nan:
+        l = ifilterfalse(np.isnan, l)
+    try:
+        n = 1
+        acc = next(l)
+        arr.append(acc)
+    except StopIteration:
+        if empty == 'raise':
+            raise ValueError('Empty mean')
+        return empty
+    for n, v in enumerate(l, 2):
+        acc += v
+        arr.append(v)
+    if n == 1:
+        return acc
+    return acc / n  # , np.asarray(arr)
+
 
 def lovasz_softmax(probas, labels, classes='present', per_image=False, ignore=None):
     """
@@ -264,35 +255,3 @@ def flatten_probas(probas, labels, ignore=None):
     vprobas = probas[valid.nonzero().squeeze()]
     vlabels = labels[valid]
     return vprobas, vlabels
-
-
-def xloss(logits, labels, ignore=None):
-    """
-    Cross entropy loss
-    """
-    return F.cross_entropy(logits, labels, ignore_index=ignore)
-
-
-def isnan(x):
-    return x != x
-
-
-def mean(l, ignore_nan=False, empty=0):
-    """
-    nanmean compatible with generators.
-    """
-    l = iter(l)
-    if ignore_nan:
-        l = ifilterfalse(isnan, l)
-    try:
-        n = 1
-        acc = next(l)
-    except StopIteration:
-        if empty == 'raise':
-            raise ValueError('Empty mean')
-        return empty
-    for n, v in enumerate(l, 2):
-        acc += v
-    if n == 1:
-        return acc
-    return acc / n
