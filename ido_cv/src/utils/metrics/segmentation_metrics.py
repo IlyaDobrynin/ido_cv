@@ -7,6 +7,7 @@
 import numpy as np
 import torch
 from ..metric_utils import numpy_metric
+from ..metric_utils import numpy_metric_per_image
 from ..metric_utils import torch_metric
 from ..metric_utils import calculate_confusion_matrix_from_arrays
 from ..metric_utils import get_metric_from_matrix
@@ -151,9 +152,6 @@ class SegmentationMetrics:
         confusion_matrix = calculate_confusion_matrix_from_arrays(
             preds_, trues_, preds.shape[1]
         )
-        # print(confusion_matrix)
-        if ignore_class is None:
-            confusion_matrix = confusion_matrix[1:, 1:]
         metric = get_metric_from_matrix(confusion_matrix, metric_name, ignore_class)
         return np.mean(metric)
 
@@ -166,7 +164,8 @@ class SegmentationMetrics:
         if device == 'cpu':
             trues = trues.data.cpu().numpy()
             preds = preds.data.cpu().numpy()
-            metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            # metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            metric = numpy_metric_per_image(trues=trues, preds=preds, metric_name=metric_name)
         elif device == 'gpu':
             metric = torch_metric(trues=trues, preds=preds, metric_name=metric_name)
         else:

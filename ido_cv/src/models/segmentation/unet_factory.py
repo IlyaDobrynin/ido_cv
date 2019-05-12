@@ -41,6 +41,8 @@ class UnetFactory(EncoderCommon):
                             value.
         pretrained:         Name of the pretrain weights. 'imagenet' or None
         unfreeze_encoder:   Flag to unfreeze encoder weights
+        custom_enc_start:   Flag to replace pretrained model first layer with custom ConvBnRelu
+                            layer with stride 2
         num_input_channels: Amount of input channels
         dropout_rate:       Model dropout rate
         bn_type:            Decoder batchnorm type:
@@ -73,15 +75,13 @@ class UnetFactory(EncoderCommon):
                  depthwise=False, residual=False, mid_block=None, dilate_depth=1, gau=False,
                  hypercolumn=False, se_decoder=False):
 
-        super(UnetFactory, self).__init__(backbone=backbone,
-                                          pretrained=pretrained,
-                                          depth=depth,
-                                          unfreeze_encoder=unfreeze_encoder,
-                                          custom_enc_start=custom_enc_start,
-                                          num_input_channels=num_input_channels,
-                                          bn_type=bn_type,
-                                          conv_type=conv_type,
-                                          depthwise=depthwise)
+        super(UnetFactory, self).__init__(
+            backbone=backbone, pretrained=pretrained, depth=depth,
+            unfreeze_encoder=unfreeze_encoder, custom_enc_start=custom_enc_start,
+            num_input_channels=num_input_channels, bn_type=bn_type, conv_type=conv_type,
+            depthwise=depthwise
+        )
+
         self.num_classes = num_classes
         self.num_filters = num_filters
         self.dropout_rate = dropout_rate
@@ -117,10 +117,12 @@ class UnetFactory(EncoderCommon):
                     depthwise=self.depthwise,
                     conv_type=self.conv_type
                 )
-                self.fpa_dil_conv = self.ConvBlock(
+                self.fpa_dil_conv = Conv(
                     in_channels=self.encoder_filters[self.depth - 1] * 2,
                     out_channels=self.encoder_filters[self.depth - 1],
-                    kernel_size=1
+                    kernel_size=1,
+                    depthwise=depthwise,
+                    conv_type=self.conv_type
                 )
             elif self.mid_block == 'vortex':
                 self.vortex = VortexPooling(
@@ -138,46 +140,53 @@ class UnetFactory(EncoderCommon):
 
         if self.gau:
             self.gau_layers = self._get_gau_layers()
- 
+
         if self.hypercolumn:
             self.hypercolumn_layers = self._get_hypercolumn_layers()
-            self.hc_conv = Conv(in_channels=self.num_filters,
-                                out_channels=self.num_filters,
-                                kernel_size=1,
-                                depthwise=self.depthwise,
-                                conv_type=self.conv_type)
-            # self.hc_conv = ConvBnRelu(in_channels=self.num_filters,
-            #                           out_channels=self.num_filters,
-            #                           kernel_size=1,
-            #                           depthwise=self.depthwise,
-            #                           bn_type=self.bn_type,
-            #                           conv_type=self.conv_type)
+            hypercolumn_parameters = dict(
+                in_channels=self.num_filters,
+                out_channels=self.num_filters,
+                kernel_size=1,
+                depthwise=self.depthwise,
+                conv_type=self.conv_type
+            )
+            # self.hc_conv = Conv(
+            #     **parameters
+            # )
+            self.hc_conv = ConvBnRelu(
+                bn_type=self.bn_type,
+                **hypercolumn_parameters
+            )
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
+        first_layer_parameters = dict(
+            in_channels=self.num_input_channels,
+            kernel_size=3,
+            padding=1,
+            depthwise=self.depthwise,
+            bn_type=self.bn_type,
+            conv_type=self.conv_type
+        )
         self.first_layer = nn.Sequential(
             OrderedDict(
                 [
-                    ("conv_bn_relu_1", ConvBnRelu(in_channels=self.num_input_channels,
-                                                  out_channels=self.num_input_channels,
-                                                  kernel_size=3,
-                                                  padding=1,
-                                                  depthwise=self.depthwise,
-                                                  bn_type=self.bn_type,
-                                                  conv_type=self.conv_type)),
-                    ("conv_bn_relu_2", ConvBnRelu(in_channels=self.num_input_channels,
-                                                  out_channels=self.decoder_filters[1],
-                                                  kernel_size=3,
-                                                  padding=1,
-                                                  depthwise=self.depthwise,
-                                                  bn_type=self.bn_type,
-                                                  conv_type=self.conv_type))
+                    ("conv_bn_relu_1", ConvBnRelu(
+                        out_channels=self.num_input_channels,
+                        **first_layer_parameters
+                    )),
+                    ("conv_bn_relu_2", ConvBnRelu(
+                        out_channels=self.decoder_filters[1],
+                        **first_layer_parameters
+                    ))
                 ]
             )
         )
 
-        self.final_layer = nn.Conv2d(in_channels=self.num_filters,
-                                     out_channels=self.num_classes,
-                                     kernel_size=1)
+        self.final_layer = nn.Conv2d(
+            in_channels=self.num_filters,
+            out_channels=self.num_classes,
+            kernel_size=1
+        )
 
     def _get_dilation_layers(self):
         """ Function to define dilation bottleneck layers
@@ -187,13 +196,15 @@ class UnetFactory(EncoderCommon):
         dilation_layers = nn.ModuleList([])
         filters = self.encoder_filters[self.depth - 1]
         for i in range(self.dilate_depth):
-            d_block = ConvBnRelu(in_channels=filters,
-                                 out_channels=filters,
-                                 kernel_size=3,
-                                 dilation=(2 ** i),
-                                 padding=(2 ** i),
-                                 bn_type=self.bn_type,
-                                 conv_type=self.conv_type)
+            d_block = ConvBnRelu(
+                in_channels=filters,
+                out_channels=filters,
+                kernel_size=3,
+                dilation=(2 ** i),
+                padding=(2 ** i),
+                bn_type=self.bn_type,
+                conv_type=self.conv_type
+            )
             dilation_layers.append(d_block)
         return dilation_layers
 
@@ -211,13 +222,15 @@ class UnetFactory(EncoderCommon):
                 in_ch_decoder = self.decoder_filters[rev_i + 1]
             in_ch_encoder = self.encoder_filters[rev_i - 1]
             out_ch = self.encoder_filters[rev_i - 1]
-            gau_block = GAUBlockUnet(in_ch_enc=in_ch_encoder,
-                                     in_ch_dec=in_ch_decoder,
-                                     out_ch=out_ch,
-                                     conv_type=self.conv_type,
-                                     bn_type=self.bn_type,
-                                     depthwise=self.depthwise,
-                                     upscale_mode=self.upscale_mode)
+            gau_block = GAUBlockUnet(
+                in_ch_enc=in_ch_encoder,
+                in_ch_dec=in_ch_decoder,
+                out_ch=out_ch,
+                conv_type=self.conv_type,
+                bn_type=self.bn_type,
+                depthwise=self.depthwise,
+                upscale_mode=self.upscale_mode
+            )
             gau_layers.append(gau_block)
         return gau_layers
 
@@ -240,28 +253,26 @@ class UnetFactory(EncoderCommon):
                 in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
                 
             out_channels = self.decoder_filters[rev_i]
+            decoder_parameters = dict(
+                in_skip_ch=in_skip_ch,
+                in_dec_ch=in_dec_ch,
+                out_channels=out_channels,
+                dropout_rate=self.dropout_rate,
+                depthwise=self.depthwise,
+                upscale_mode=self.upscale_mode,
+                bn_type=self.bn_type,
+                conv_type=self.conv_type,
+                se_include=self.se_decoder
+            )
             if self.residual:
-                d_block = DecoderBlockResidual(in_skip_ch=in_skip_ch,
-                                               in_dec_ch=in_dec_ch,
-                                               inside_channels=out_channels,
-                                               dropout_rate=self.dropout_rate,
-                                               depthwise=self.depthwise,
-                                               upscale_mode=self.upscale_mode,
-                                               bn_type=self.bn_type,
-                                               conv_type=self.conv_type,
-                                               se_include=self.se_decoder)
+                d_block = DecoderBlockResidual(
+                    **decoder_parameters
+                )
             else:
-                d_block = DecoderBlock(in_skip_ch=in_skip_ch,
-                                       in_dec_ch=in_dec_ch,
-                                       out_channels=out_channels,
-                                       dropout_rate=self.dropout_rate,
-                                       depthwise=self.depthwise,
-                                       upscale_mode=self.upscale_mode,
-                                       bn_type=self.bn_type,
-                                       conv_type=self.conv_type,
-                                       se_include=self.se_decoder)
+                d_block = DecoderBlock(
+                    **decoder_parameters
+                )
             decoder_layers.append(d_block)
-        # print(decoder_layers)
         return decoder_layers
 
     def _get_hypercolumn_layers(self):
@@ -276,18 +287,21 @@ class UnetFactory(EncoderCommon):
             else:
                 in_channels = self.decoder_filters[-i]
             out_channels = self.num_filters
+            hc_parameters = dict(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                depthwise=self.depthwise,
+                conv_type=self.conv_type
+            )
             hc_layers.append(
-                # Conv(in_channels=in_channels,
-                #      out_channels=out_channels,
-                #      kernel_size=1,
-                #      depthwise=self.depthwise,
-                #      conv_type=self.conv_type)
-                ConvBnRelu(in_channels=in_channels,
-                           out_channels=out_channels,
-                           kernel_size=1,
-                           depthwise=self.depthwise,
-                           bn_type=self.bn_type,
-                           conv_type=self.conv_type)
+                # Conv(
+                #     **hc_parameters
+                # )
+                ConvBnRelu(
+                    bn_type=self.bn_type,
+                    **hc_parameters
+                )
             )
         return hc_layers
 
@@ -344,19 +358,15 @@ class UnetFactory(EncoderCommon):
         first_hc = self.hypercolumn_layers[0](encoder_last)
         first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=True)
         hc.append(first_hc.unsqueeze(-1))
-        # hc.append(first_hc)
         for i, decoder in enumerate(decoder_list):
             hc_layer = self.hypercolumn_layers[i + 1](decoder)
             hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=True)
             hc.append(hc_layer.unsqueeze(-1))
-            # hc.append(hc_layer)
-            # out = out + hc_layer
         out = torch.cat(hc, dim=-1)
         out = torch.sum(out, dim=-1)
         del hc
         gc.collect()
         out = self.hc_conv(out)
-        # out = self.hc_dropout(out)
         return out
 
     def forward(self, x):

@@ -8,21 +8,34 @@ from torch import nn
 from ..backbones import backbone_factory
 from ..nn_blocks.encoders import EncoderCommon
 
+# from ido_cv.src.models.backbones import backbone_factory
+# from ido_cv.src.models.nn_blocks.encoders import EncoderCommon
+
 
 class ClassifierFactory(EncoderCommon):
-    def __init__(self, backbone, num_classes, pretrained='imagenet', unfreeze_encoder=True):
+    def __init__(self, backbone: str, depth: int, num_classes: int, avg_pool_kernel: int = 7,
+                 pretrained: str = 'imagenet', unfreeze_encoder: bool = True,
+                 custom_enc_start: bool = False, num_input_channels: int = 3,
+                 conv_type: str = 'default', bn_type: str = 'default', depthwise: bool = False):
 
-        super(ClassifierFactory, self).__init__(backbone=backbone,
-                                                pretrained=pretrained,
-                                                depth=5,
-                                                unfreeze_encoder=unfreeze_encoder)
+        super(ClassifierFactory, self).__init__(
+            backbone=backbone,
+            pretrained=pretrained,
+            depth=depth,
+            unfreeze_encoder=unfreeze_encoder,
+            custom_enc_start=custom_enc_start,
+            num_input_channels=num_input_channels,
+            conv_type=conv_type,
+            bn_type=bn_type,
+            depthwise=depthwise
+        )
 
         assert backbone in backbone_factory.BACKBONES.keys(), \
             f"Wrong name of backbone: {backbone}. " \
                 f"Should be in backbones.backbone_factory.backbones.keys()"
 
-        self.avgpool = nn.AvgPool2d(7)
-        self.fc = nn.Linear(self.encoder_filters[-1], num_classes)
+        self.avgpool = nn.AvgPool2d(avg_pool_kernel)
+        self.fc = nn.Linear(self.encoder_filters[depth - 1], num_classes)
 
     def forward(self, x):
         x, _ = self._make_encoder_forward(x)
@@ -37,7 +50,9 @@ if __name__ == '__main__':
     # backbone_name = 'resnet18'
     input_size = (3, 256, 256)
     model = ClassifierFactory(
-        backbone=backbone_name, num_classes=1, pretrained='imagenet', unfreeze_encoder=True
+        backbone=backbone_name, depth=5, num_classes=47, pretrained='imagenet',
+        unfreeze_encoder=True, avg_pool_kernel=7, custom_enc_start=False, num_input_channels=3,
+        conv_type='default', bn_type='default', depthwise=False
     )
     # print(model.state_dict())
     # model = backbone_factory.get_backbone(name=backbone, pretrained='imagenet')

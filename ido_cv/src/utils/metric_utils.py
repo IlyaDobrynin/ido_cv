@@ -134,6 +134,7 @@ def numpy_metric_per_image(trues, preds, metric_name):
             metrics.append(0)
             continue
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) == 0:
+            metrics.append(1)
             continue
 
         pred = resize_image(pred, size=true.shape[:2], interpolation=cv2.INTER_NEAREST)

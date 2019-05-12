@@ -20,13 +20,15 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 
 from .. import dirs
-from .utils.get_model_config import ConfigParser
 from . import allowed_parameters
-from .data_utils.datasets.detection_dataset import RetinaDataset
+
+from .models.models_facade import ModelsFacade
+
 from .data_utils.encoder_alt import DataEncoder
+from .data_utils.datasets.classification_dataset import ClassifyDataset
 from .data_utils.datasets.segmentation_dataset import BinSegDataset
 from .data_utils.datasets.segmentation_dataset import MultSegDataset
-from .data_utils.datasets.classification_dataset import ClassifyDataset
+from .data_utils.datasets.detection_dataset import RetinaDataset
 from .data_utils.data_augmentations import Augmentations
 
 from .utils import model_utils
@@ -37,8 +39,8 @@ from .utils.image_utils import resize
 from .utils.image_utils import draw_images
 from .utils.image_utils import delete_small_instances
 from .utils.metric_utils import get_opt_threshold
+from .utils.get_model_config import ConfigParser
 from .utils.metrics.detection_metrics import mean_ap
-from .utils.model_utils import write_event
 
 pd.set_option('display.max_columns', 10)
 
@@ -207,8 +209,8 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list=None, cudnn_bench: bool=False,
-                  path_to_weights: str=None, model_parameters: dict=None,
+    def get_model(self, model_name: str, device_ids: list = None, cudnn_bench: bool = False,
+                  path_to_weights: str = None, model_parameters: dict = None,
                   show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
@@ -243,8 +245,8 @@ class Pipeline(AbstractPipeline):
         )
 
         # Get model class
-        model_class = MODELS[self.task][self.mode][model_name]['class']
-        model = model_class(**model_parameters)
+        facade = ModelsFacade(task=self.task, model_name=model_name)
+        model = facade.get_model(**model_parameters)
 
         # Locate model into device
         model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
@@ -492,7 +494,7 @@ class Pipeline(AbstractPipeline):
             )
 
             # Write epoch parameters to log file
-            write_event(log_file, first_step, e, **val_metrics)
+            model_utils.write_event(log_file, first_step, e, **val_metrics)
             val_loss = val_metrics['loss']
 
             # Make scheduler step
@@ -583,7 +585,7 @@ class Pipeline(AbstractPipeline):
                 if self.task == 'segmentation':
                     if self.mode == 'binary':
                         metric_class = METRICS[self.task](
-                            mode=self.mode, activation='sigmoid', device='gpu'
+                            mode=self.mode, activation='sigmoid', device='cpu'
                         )
                         for m_name in metric_names:
                             metric_values[m_name] += [
@@ -593,7 +595,7 @@ class Pipeline(AbstractPipeline):
                             ]
                     else:  # self.mode == 'multi'
                         metric_class = METRICS[self.task](
-                            mode=self.mode, activation='softmax', device='gpu'
+                            mode=self.mode, activation='softmax', device='cpu'
                         )
                         for m_name in metric_names:
                             metric_values[m_name] += [

@@ -11,7 +11,6 @@ from .utils.loss.classification_losses import BCELoss
 from .utils.loss.classification_losses import NllLoss, CELoss
 from .utils.metrics.segmentation_metrics import SegmentationMetrics
 from .utils.metrics.classification_metrics import ClassificationMetrics
-from .utils.metrics import classification_metrics as cls_metric
 from .utils import tta
 
 
@@ -73,7 +72,6 @@ MODELS = {
     'segmentation': {
         'binary': {
             'unet': {
-                'class': UnetFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
@@ -97,7 +95,6 @@ MODELS = {
                 }
             },
             'fpn': {
-                'class': FPNFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
@@ -118,7 +115,6 @@ MODELS = {
                 }
             },
             'deeplabv3': {
-                'class': DeepLabV3,
                 'default_parameters': {
                     'backbone': 'dilated_resnet34',
                     'num_classes': 1,
@@ -134,7 +130,6 @@ MODELS = {
         },
         'multi': {
             'unet': {
-                'class': UnetFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
@@ -158,7 +153,6 @@ MODELS = {
                 }
             },
             'fpn': {
-                'class': FPNFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
@@ -179,7 +173,6 @@ MODELS = {
                 }
             },
             'deeplabv3': {
-                'class': DeepLabV3,
                 'default_parameters': {
                     'backbone': 'dilated_resnet34',
                     'num_classes': 11,
@@ -197,7 +190,6 @@ MODELS = {
     'detection': {
         'all': {
             'RetinaNet': {
-                'class': RetinaNet,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'se_block': False,
@@ -209,7 +201,6 @@ MODELS = {
     'classification': {
         'binary': {
             'basic_model': {
-                'class': ClassifierFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'num_classes': 1,
@@ -220,7 +211,6 @@ MODELS = {
         },
         'multi': {
             'basic_model': {
-                'class': ClassifierFactory,
                 'default_parameters': {
                     'backbone': 'resnet34',
                     'num_classes': 5,
