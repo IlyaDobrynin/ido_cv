@@ -164,12 +164,14 @@ class Pipeline(AbstractPipeline):
             augmentations = None
         if dataset_class is None:
             if self.task == 'detection':
-                dataset_class = RetinaDataset(root=path_to_dataset,
-                                              labels_file=os.path.join(path_to_dataset, 'labels.csv'),
-                                              initial_size=self.img_size_orig,
-                                              model_input_size=self.img_size_target,
-                                              train=is_train,
-                                              augmentations=augmentations)
+                dataset_class = RetinaDataset(
+                    root=path_to_dataset,
+                    labels_file=os.path.join(path_to_dataset, 'labels.csv'),
+                    initial_size=self.img_size_orig,
+                    model_input_size=self.img_size_target,
+                    train=is_train,
+                    augmentations=augmentations
+                )
                 # dataset_class = None
             elif self.task == 'segmentation':
                 if self.mode == 'binary':

@@ -69,10 +69,10 @@ parameters = dict(
     # STAGES
     # stages=['f', 't', 'v', 'p'],
     # stages=['f', 't', 'v'],
-    stages=['t', 'v'],
+    # stages=['t', 'v'],
     # stages=['v'],
     # stages=['v'],
-    # stages=['v', 'p'],
+    stages=['v', 'p'],
     # stages=['p'],
 
     # COMMON PARAMETERS

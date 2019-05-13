@@ -150,13 +150,13 @@ class UnetFactory(EncoderCommon):
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
             )
-            # self.hc_conv = Conv(
-            #     **parameters
-            # )
-            self.hc_conv = ConvBnRelu(
-                bn_type=self.bn_type,
+            self.hc_conv = Conv(
                 **hypercolumn_parameters
             )
+            # self.hc_conv = ConvBnRelu(
+            #     bn_type=self.bn_type,
+            #     **hypercolumn_parameters
+            # )
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
         first_layer_parameters = dict(
