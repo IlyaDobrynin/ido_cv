@@ -97,13 +97,47 @@ class UnetFactory(EncoderCommon):
         self.hypercolumn = hypercolumn
         self.se_decoder = se_decoder
 
+        # Set decoder filters:
+        # [
+        #   num_filters,
+        #   2 * num_filters,
+        #   4 * num_filters,
+        #   8 * num_filters,
+        #   16 * num_filters,
+        #   32 * num_filters
+        # ]
         self.decoder_filters = []
         for i in range(self.depth):
             self.decoder_filters.append(self.num_filters * (2 ** i))
+
+        # Make first encoder layer
+        first_layer_parameters = dict(
+            in_channels=self.num_input_channels,
+            kernel_size=3,
+            padding=1,
+            depthwise=self.depthwise,
+            bn_type=self.bn_type,
+            conv_type=self.conv_type
+        )
+        self.first_layer = nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_bn_relu_1", ConvBnRelu(
+                        out_channels=self.num_input_channels,
+                        **first_layer_parameters
+                    )),
+                    ("conv_bn_relu_2", ConvBnRelu(
+                        out_channels=self.decoder_filters[1],
+                        **first_layer_parameters
+                    ))
+                ]
+            )
+        )
+
+        # Make decoder layers
         self.decoder_layers = self._get_decoder()
 
-        # print(len(self.decoder_layers))
-
+        # Make bottleneck block
         if self.mid_block is not None:
             if self.mid_block == 'dilation':
                 self.dilate_depth = dilate_depth
@@ -145,50 +179,27 @@ class UnetFactory(EncoderCommon):
                     )
                 )
 
+        # Make GAU layers
         if self.gau:
             self.gau_layers = self._get_gau_layers()
 
+        # Make hypercolumn layers
         if self.hypercolumn:
             self.hypercolumn_layers = self._get_hypercolumn_layers()
             hypercolumn_parameters = dict(
                 in_channels=self.num_filters * (len(self.decoder_layers) + 1),
-                out_channels=self.decoder_filters[1],
+                out_channels=self.num_filters,
                 kernel_size=1,
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
             )
-            # self.hc_conv = Conv(
-            #     **hypercolumn_parameters
-            # )
             self.hc_conv = ConvBnRelu(
                 bn_type=self.bn_type,
                 **hypercolumn_parameters
             )
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
-        final_decoder_parameters = dict(
-            out_channels=self.num_filters,
-            kernel_size=3,
-            padding=1,
-            depthwise=self.depthwise,
-            bn_type=self.bn_type,
-            conv_type=self.conv_type
-        )
-        self.final_decoder_layer = nn.Sequential(
-            OrderedDict(
-                [
-                    ("final_dec_conv_1", ConvBnRelu(
-                        in_channels=self.decoder_filters[1],
-                        **final_decoder_parameters
-                    )),
-                    ("final_dec_conv_2", ConvBnRelu(
-                        in_channels=self.num_filters,
-                        **final_decoder_parameters
-                    ))
-                ]
-            )
-        )
-
+        # Make final layer
         self.final_layer = nn.Conv2d(
             in_channels=self.num_filters,
             out_channels=self.num_classes,
@@ -217,9 +228,9 @@ class UnetFactory(EncoderCommon):
         return dilation_layers
 
     def _get_gau_layers(self):
-        """ Function to define gau bottleneck layers
+        """ Function to define gau layers
 
-        :return: List of gau bottleneck layers
+        :return: List of gau layers
         """
         gau_layers = nn.ModuleList([])
         for i in range(self.depth - 1):
@@ -248,22 +259,19 @@ class UnetFactory(EncoderCommon):
         :return: List of encoder layers
         """
         decoder_layers = nn.ModuleList([])
-        for i in range(1, self.depth):
-            rev_i = self.depth - i
-            if i == 1:
+        for i in range(self.depth):
+            rev_i = (self.depth - 1) - i
+            if i == 0:
                 in_skip_ch = self.encoder_filters[rev_i - 1]
                 in_dec_ch = self.encoder_filters[rev_i]
-            # elif i == self.depth - 1:
-            #     in_skip_ch = self.decoder_filters[1]
-            #     in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
+            elif i == self.depth - 1:
+                in_skip_ch = self.decoder_filters[1]
+                in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
             else:
                 in_skip_ch = self.encoder_filters[rev_i - 1]
                 in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
 
             out_channels = self.decoder_filters[rev_i]
-
-            # print('_get_decoder', i, rev_i, in_skip_ch, in_dec_ch, out_channels)
-
             decoder_parameters = dict(
                 in_skip_ch=in_skip_ch,
                 in_dec_ch=in_dec_ch,
@@ -316,7 +324,7 @@ class UnetFactory(EncoderCommon):
             )
         return hc_layers
 
-    def _make_decoder_forward(self, x, encoder_list):
+    def _make_decoder_forward(self, x, first_skip, encoder_list):
         """ Function to make u-net decoder
 
         :param x: Input tenzor
@@ -325,17 +333,15 @@ class UnetFactory(EncoderCommon):
         :return: Last layer tensor and list of decoder tensors
         """
         decoder_list = []
-        # for i, decoder_layer in enumerate(self.decoder_layers):
-        for i in range(len(self.decoder_layers)):
+        for i, decoder_layer in enumerate(self.decoder_layers):
             neg_i = -(i + 1)
-            decoder_layer = self.decoder_layers[i]
-            # if i == len(self.decoder_layers) - 1:
-            #     skip = [first_skip]
-            # else:
-            if self.gau:
-                skip = [self.gau_layers[i](encoder_list[neg_i - 1], x)]
+            if i == len(self.decoder_layers) - 1:
+                skip = [first_skip]
             else:
-                skip = [encoder_list[neg_i - 1]]
+                if self.gau:
+                    skip = [self.gau_layers[i](encoder_list[neg_i - 1], x)]
+                else:
+                    skip = [encoder_list[neg_i - 1]]
             x = decoder_layer(x, skip)
             decoder_list.append(x.clone())
         return x, decoder_list
@@ -388,7 +394,7 @@ class UnetFactory(EncoderCommon):
         """
         Defines the computation performed at every call.
         """
-        h, w = x.size()[2], x.size()[3]
+        first_skip = self.first_layer(x)
 
         # Get encoder features
         x, encoder_list = self._make_encoder_forward(x)
@@ -408,14 +414,12 @@ class UnetFactory(EncoderCommon):
             x = self.vortex(x)
 
         # Get decoder features
-        x, decoder_list = self._make_decoder_forward(x, encoder_list)
+        x, decoder_list = self._make_decoder_forward(x, first_skip, encoder_list)
 
         # Make hypercolumn
         if self.hypercolumn:
             x = self._make_hypercolumn_forward(encoder_list[-1], decoder_list)
 
-        x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
-        x = self.final_decoder_layer(x)
         # Make final layer
         x = self.final_layer(x)
         return x
@@ -423,14 +427,13 @@ class UnetFactory(EncoderCommon):
 
 if __name__ == '__main__':
     backbone_name = 'resnet34'
-    # backbone_name = 'se_resnext50'
     input_size = (3, 256, 256)
 
     model = UnetFactory(
-        backbone=backbone_name, depth=5, num_classes=3, num_filters=64, pretrained='imagenet',
+        backbone=backbone_name, depth=4, num_classes=3, num_filters=32, pretrained='imagenet',
         unfreeze_encoder=True, custom_enc_start=False, num_input_channels=3, dropout_rate=0.2,
         bn_type='default', conv_type='default', upscale_mode='nearest', depthwise=False,
-        residual=True, mid_block=None, hypercolumn=True, dilate_depth=1, gau=False,
+        residual=True, mid_block='fpa', hypercolumn=True, dilate_depth=1, gau=False,
         se_decoder=False
     )
     # print(model.state_dict())

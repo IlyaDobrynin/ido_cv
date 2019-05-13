@@ -914,15 +914,9 @@ class Pipeline(AbstractPipeline):
                                 print(f'- best {m_k}: {m_v:.5f}')
 
         else:  # self.task == 'classification'
-            if metric_names is not None:
-                metrics = dict()
-                for m_name in metric_names:
-                    metrics[m_name] = METRICS[self.task][self.mode][m_name]
-            else:
-                raise ValueError(
-                    f"Wrong metric_names parameter: {metric_names}."
-                )
-
+            metric_class = METRICS[self.task](
+                mode=self.mode, activation='sigmoid'
+            )
             if self.mode == 'binary':
                 # pred_df['names'] = pred_df['names'].apply(lambda x: x[:-4])
                 all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
@@ -932,14 +926,14 @@ class Pipeline(AbstractPipeline):
                 # print('pipeline.evaluate_classification_metrics', labels_t, labels_p)
                 out_metrics = dict()
                 for m_name in metric_names:
-                    out_metrics[m_name] = metrics[m_name](labels_t, labels_p)
+                    out_metrics[m_name] = metric_class.get_metric_value(labels_t, labels_p, m_name)
             else:  # if self.mode == 'multi'
                 all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
                 labels_t = all_df['labels_true'].values.astype(np.uint8)
                 labels_p = all_df['labels_pred'].values
                 out_metrics = dict()
                 for m_name in metric_names:
-                    out_metrics[m_name] = metrics[m_name](labels_t, labels_p)
+                    out_metrics[m_name] = metric_class.get_metric_value(labels_t, labels_p, m_name)
 
         return out_metrics
 

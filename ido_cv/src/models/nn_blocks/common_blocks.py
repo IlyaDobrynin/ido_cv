@@ -10,9 +10,9 @@ from .custom_layers.partial_conv import PartialConv2d
 
 
 class DepthwiseConv2d(nn.Module):
-    
+
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=1, dilation=1, bias=True, conv_type='default'):
+                 padding=0, dilation=1, bias=True, conv_type='default'):
         super(DepthwiseConv2d, self).__init__()
         if conv_type == 'default':
             conv = nn.Conv2d
@@ -33,7 +33,7 @@ class DepthwiseConv2d(nn.Module):
                               groups=in_channels,
                               bias=bias)
         self.pointwise = conv(in_channels, out_channels, kernel_size=1)
-    
+
     def forward(self, x):
         out = self.depthwise(x)
         out = self.pointwise(out)
@@ -92,7 +92,7 @@ class BatchNorm(nn.Module):
 
 
 class ConvRelu(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1,
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,
                  groups=1, bias=True, depthwise=False, conv_type='default'):
         super(ConvRelu, self).__init__()
         self.conv = Conv(
@@ -116,7 +116,7 @@ class ConvRelu(nn.Module):
 
 
 class ConvBnRelu(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1,
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1,
                  groups=1, bias=True, add_relu=True, depthwise=False, conv_type='default',
                  bn_type='default'):
         super(ConvBnRelu, self).__init__()
@@ -135,7 +135,7 @@ class ConvBnRelu(nn.Module):
         self.add_relu = add_relu
         self.bn = BatchNorm(channels=out_channels, bn_type=bn_type)
         self.activation = nn.ReLU(inplace=True)
-    
+
     def forward(self, x):
         x = self.conv(x)
         x = self.bn(x)
