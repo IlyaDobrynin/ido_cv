@@ -69,7 +69,7 @@ def main_pipe(args):
     path_to_train = os.path.join(args['data_path'], 'train')
     path_to_valid = os.path.join(args['data_path'], 'val')
     path_to_holdout = os.path.join(args['data_path'], 'holdout')
-    path_to_holdout_labels = os.path.join(args['data_path'], 'holdout/masks')
+    # path_to_holdout_labels = os.path.join(args['data_path'], 'holdout/masks')
     path_to_test = os.path.join(args['data_path'], 'test')
 
     scores = None
@@ -122,8 +122,8 @@ def main_pipe(args):
             print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
                 model=model, pipeline=pipe_class, data_path=path_to_holdout,
-                labels_path=path_to_holdout_labels, val_metrics=args['valid_metrics'],
-                batch_size=args['batch_size'], workers=args['workers'], save_preds=args['save_val'],
+                val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
+                workers=args['workers'], save_preds=args['save_val'],
                 output_path=args['output_path']
             )
 

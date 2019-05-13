@@ -77,7 +77,7 @@ class SegmentationMetrics:
                            threshold: float) -> float:
         """ Metric for binary segmentation
 
-        :param metric_name: 
+        :param metric_name:
         :param threshold:
         :return:
         """
@@ -152,6 +152,9 @@ class SegmentationMetrics:
         confusion_matrix = calculate_confusion_matrix_from_arrays(
             preds_, trues_, preds.shape[1]
         )
+        # print(confusion_matrix)
+        if ignore_class is None:
+            confusion_matrix = confusion_matrix[1:, 1:]
         metric = get_metric_from_matrix(confusion_matrix, metric_name, ignore_class)
         return np.mean(metric)
 
@@ -162,8 +165,8 @@ class SegmentationMetrics:
         preds = (preds > threshold).long()
 
         if device == 'cpu':
-            trues = trues.data.cpu().numpy()
-            preds = preds.data.cpu().numpy()
+            trues = trues.data.cpu().numpy().astype(np.uint8)
+            preds = preds.data.cpu().numpy().astype(np.uint8)
             # metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
             metric = numpy_metric_per_image(trues=trues, preds=preds, metric_name=metric_name)
         elif device == 'gpu':

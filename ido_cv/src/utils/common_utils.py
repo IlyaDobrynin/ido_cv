@@ -322,7 +322,7 @@ def get_true_classification(labels_path: str) -> pd.DataFrame:
     :return:
     """
     if os.path.exists(labels_path):
-        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path, 'labels.csv'), sep=';')
+        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path), sep=';')
     else:
         raise ValueError(
             f"Labels path {labels_path} does not exists."

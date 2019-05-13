@@ -36,8 +36,14 @@ class ClassificationMetrics:
                 f'not {self.activation}'
             )
 
+        metric = self.get_metric_value(trues=trues_, preds=preds_, metric_name=metric_name)
+
+        return metric
+
+    @staticmethod
+    def get_metric_value(trues, preds, metric_name):
         if metric_name == 'accuracy':
-            metric = get_accuracy(trues=trues_, preds=preds_)
+            metric = get_accuracy(trues=trues, preds=preds)
         else:
             raise ValueError(
                 f'Wrong metric_name: {metric_name}.'

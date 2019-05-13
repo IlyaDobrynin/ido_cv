@@ -8,9 +8,6 @@ from torch import nn
 from ..backbones import backbone_factory
 from ..nn_blocks.encoders import EncoderCommon
 
-# from ido_cv.src.models.backbones import backbone_factory
-# from ido_cv.src.models.nn_blocks.encoders import EncoderCommon
-
 
 class ClassifierFactory(EncoderCommon):
     def __init__(self, backbone: str, depth: int, num_classes: int, avg_pool_kernel: int = 7,
