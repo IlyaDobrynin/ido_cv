@@ -51,10 +51,19 @@ def main_pipe(args):
         time=args['time']
     )
 
+    task = pipe_class.task
+    mode = pipe_class.mode
+    time = pipe_class.time
+    model_save_dir = dirs.make_dir(
+        relative_path=f'models/{task}/{mode}/{args["model_name"]}/{time}',
+        top_dir=args['output_path']
+    )
+
     # Get initial model, initial parameters (first epoch, first step, best measure)
     # and model_parameters
     model, initial_parameters, model_parameters = pipe_class.get_model(
         model_name=args['model_name'],
+        save_path=model_save_dir,
         device_ids=args['device_ids'],
         cudnn_bench=args['cudnn_benchmark'],
         path_to_weights=args['path_to_weights'],
@@ -89,16 +98,6 @@ def main_pipe(args):
         
         # Training line
         if 't' in args['stages']:
-
-            task = pipe_class.task
-            mode = pipe_class.mode
-            time = pipe_class.time
-
-            model_save_dir = dirs.make_dir(
-                relative_path=f'models/{task}/{mode}/{args["model_name"]}/{time}',
-                top_dir=args['output_path']
-            )
-
             # Save hyperparameters dictionary
             with open(os.path.join(model_save_dir, 'hyperparameters.yml'), 'w') as outfile:
                 yaml.dump(args, outfile, default_flow_style=False)

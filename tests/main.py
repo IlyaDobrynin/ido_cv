@@ -58,9 +58,10 @@ parameters = dict(
     in_size_orig=(45, 256),
     in_size_target=256,
 
-    device_ids=[0, 1],
+    # device_ids=[0, 1],
+    device_ids=[-1],
     # device_ids=[0],
-    workers=10,
+    workers=12,
     batch_size=32,
     learning_rate=0.001,
     epochs=200,
@@ -69,10 +70,10 @@ parameters = dict(
     # STAGES
     # stages=['f', 't', 'v', 'p'],
     # stages=['f', 't', 'v'],
-    # stages=['t', 'v'],
+    stages=['t', 'v'],
     # stages=['v'],
     # stages=['v'],
-    stages=['v', 'p'],
+    # stages=['v', 'p'],
     # stages=['p'],
 
     # COMMON PARAMETERS

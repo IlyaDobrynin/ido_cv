@@ -211,9 +211,9 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list = None, cudnn_bench: bool = False,
-                  path_to_weights: str = None, model_parameters: dict = None,
-                  show_model: bool = False) -> tuple:
+    def get_model(self, model_name: str, save_path: str, device_ids: list = None,
+                  cudnn_bench: bool = False, path_to_weights: str = None,
+                  model_parameters: dict = None, show_model: bool = True) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
@@ -224,34 +224,6 @@ class Pipeline(AbstractPipeline):
         :param show_model: Flag to show model
         :return:
         """
-        # Get model parameters
-        if path_to_weights is None:
-            if model_parameters is None:
-                model_parameters = MODELS[self.task][self.mode][model_name]['default_parameters']
-                print(
-                    f'Pretrained weights are not provided. '
-                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
-                )
-        else:
-            path_to_model = Path(path_to_weights).parents[1]
-            cfg_path = os.path.join(path_to_model, 'hyperparameters.yml')
-            if not os.path.exists(cfg_path):
-                raise ValueError(
-                    f"Path {cfg_path} does not exists."
-                )
-            cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
-            model_parameters = cfg_parser.parameters['model_parameters']
-
-        print(
-            f'Train process runs with {model_name} parameters: \n{model_parameters}'
-        )
-
-        # Get model class
-        facade = ModelsFacade(task=self.task, model_name=model_name)
-        model = facade.get_model(**model_parameters)
-
-        # Locate model into device
-        model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
 
         # Make initial model parameters for training
         initial_parameters = dict(
@@ -260,31 +232,65 @@ class Pipeline(AbstractPipeline):
             best_measure=0
         )
 
-        # Load model weights
-        if path_to_weights is not None:
-            if os.path.exists(path_to_weights):
-                if self.allocate_on == 'cpu':
-                    state = torch.load(str(path_to_weights), map_location={'cuda:0': 'cpu',
-                                                                           'cuda:1': 'cpu'})
-                    model_state = {key.replace('module.', ''): value for key, value in
-                                   state['model'].items()}
-                else:
-                    state = torch.load(str(path_to_weights))
-                    model_state = state['model']
+        # Get model parameters
+        if path_to_weights is None:
+            if model_parameters is None:
+                model_parameters = MODELS[self.task][self.mode][model_name]['default_parameters']
+                print(
+                    f'Pretrained weights are not provided. '
+                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
+                )
 
-                model.load_state_dict(model_state)
-
-                initial_parameters['epoch'] = state['epoch']
-                initial_parameters['step'] = state['epoch']
-                initial_parameters['best_measure'] = state['best_measure']
-
-                # return model, initial_parameters
-            else:
+            # Get model class
+            facade = ModelsFacade(task=self.task, model_name=model_name)
+            model = facade.get_model(**model_parameters)
+        else:
+            if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
+
+            path_to_model = Path(path_to_weights).parents[1]
+            model_class_path = os.path.join(path_to_model, 'model_class')
+            # model = model_utils.load_model_class(model_class_path=model_class_path)
+            # torch.nn.Module.dump_patches = True
+
+            if self.allocate_on == 'cpu':
+                device = torch.device('cpu')
+                model = torch.load(str(model_class_path), map_location=device)
+                model_dict = torch.load(str(path_to_weights), map_location=device)
+
+                model_weights = {key.replace('module.', ''): value
+                                 for key, value in model_dict['model_weights'].items()
+                                 if 'module' in key}
+                # print(model_weights['encoder_layers.0.0.weight'].is_cuda)
+            else:
+                model = torch.load(str(model_class_path))
+                model_dict = torch.load(str(path_to_weights))
+                model_weights = {key.replace('module.', ''): value
+                                 for key, value in model_dict['model_weights'].items()
+                                 if 'module' in key}
+
+            model.load_state_dict(model_weights)
+            initial_parameters['epoch'] = model_dict['epoch']
+            initial_parameters['step'] = model_dict['step']
+            initial_parameters['best_measure'] = model_dict['best_measure']
+
+        print(
+            f'Train process runs with {model_name} parameters: \n{model_parameters}'
+        )
+
+        torch.save(model, os.path.join(save_path, 'model_class'))
+
+        # Locate model into device
+        model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
 
         if show_model:
             from torchsummary import summary
-            summary(model, input_size=(3, self.img_size_target, self.img_size_target))
+            summary_device = 'cpu' if self.allocate_on == 'cpu' else 'cuda'
+            summary(
+                model,
+                input_size=(3, self.img_size_target, self.img_size_target),
+                device=summary_device
+            )
 
         return model, initial_parameters, model_parameters
 
@@ -416,11 +422,6 @@ class Pipeline(AbstractPipeline):
         )
         optimizer = optimizer_dict[self.optim_name]
 
-        # Get metric functions
-        # metrics = dict()
-        # for m_name in metric_names:
-        #     metrics[m_name] = METRICS[self.task][self.mode][m_name]
-
         # Get learning rate scheduler policy
         if scheduler == 'rop':
             mode = 'min' if chp_metric in ['loss'] else 'max'
@@ -523,7 +524,7 @@ class Pipeline(AbstractPipeline):
                 )
                 best_model_wts = copy.deepcopy(model.state_dict())
                 state_dict = dict(
-                    model=best_model_wts,
+                    model_weights=best_model_wts,
                     epoch=e,
                     step=first_step,
                     best_measure=best_measure

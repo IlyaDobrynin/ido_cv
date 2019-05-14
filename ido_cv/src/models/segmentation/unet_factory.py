@@ -102,8 +102,6 @@ class UnetFactory(EncoderCommon):
             self.decoder_filters.append(self.num_filters * (2 ** i))
         self.decoder_layers = self._get_decoder()
 
-        # print(len(self.decoder_layers))
-
         if self.mid_block is not None:
             if self.mid_block == 'dilation':
                 self.dilate_depth = dilate_depth
@@ -195,6 +193,8 @@ class UnetFactory(EncoderCommon):
             kernel_size=3,
             padding=1
         )
+
+        print('DSJDLKSJFLJFSDJH')
 
     def _get_dilation_layers(self):
         """ Function to define dilation bottleneck layers
@@ -325,19 +325,15 @@ class UnetFactory(EncoderCommon):
         :return: Last layer tensor and list of decoder tensors
         """
         decoder_list = []
-        # for i, decoder_layer in enumerate(self.decoder_layers):
         for i in range(len(self.decoder_layers)):
             neg_i = -(i + 1)
             decoder_layer = self.decoder_layers[i]
-            # if i == len(self.decoder_layers) - 1:
-            #     skip = [first_skip]
-            # else:
             if self.gau:
                 skip = [self.gau_layers[i](encoder_list[neg_i - 1], x)]
             else:
                 skip = [encoder_list[neg_i - 1]]
             x = decoder_layer(x, skip)
-            decoder_list.append(x.clone())
+            decoder_list.append(x)
         return x, decoder_list
 
     def _make_dilation_bottleneck(self, x):
@@ -369,12 +365,14 @@ class UnetFactory(EncoderCommon):
         h, w = decoder_list[-1].size(2), decoder_list[-1].size(3)
 
         first_hc = self.hypercolumn_layers[0](encoder_last)
-        first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
+        # first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
+        first_hc = F.interpolate(first_hc, size=(h, w), mode='nearest')
         # hc.append(first_hc.unsqueeze(-1))
         hc.append(first_hc)
         for i, decoder in enumerate(decoder_list):
             hc_layer = self.hypercolumn_layers[i + 1](decoder)
-            hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=False)
+            # hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=False)
+            hc_layer = F.interpolate(hc_layer, size=(h, w), mode='nearest')
             # hc.append(hc_layer.unsqueeze(-1))
             hc.append(hc_layer)
         out = torch.cat(hc, dim=1)
@@ -391,24 +389,24 @@ class UnetFactory(EncoderCommon):
         h, w = x.size()[2], x.size()[3]
 
         # Get encoder features
-        x, encoder_list = self._make_encoder_forward(x)
+        encoder_list = self._make_encoder_forward(x)
+        bottleneck = encoder_list[-1]
 
         # Middle bottlenecks
         if self.mid_block == 'dilation':
-            x = self._make_dilation_bottleneck(x)
+            bottleneck = self._make_dilation_bottleneck(bottleneck)
         elif self.mid_block == 'fpa':
-            x = self.fpa(x)
+            bottleneck = self.fpa(bottleneck)
         elif self.mid_block == 'fpa_dilation':
-            x_fpa = self.fpa(x)
-            x_dil = self._make_dilation_bottleneck(x)
-            x = torch.cat([x_dil, x_fpa], dim=1)
-            # x = x_fpa + x_dil
-            x = self.fpa_dil_conv(x)
+            bottleneck_fpa = self.fpa(bottleneck)
+            bottleneck_dil = self._make_dilation_bottleneck(bottleneck)
+            bottleneck = torch.cat([bottleneck_fpa, bottleneck_dil], dim=1)
+            bottleneck = self.fpa_dil_conv(bottleneck)
         elif self.mid_block == 'vortex':
-            x = self.vortex(x)
+            bottleneck = self.vortex(bottleneck)
 
         # Get decoder features
-        x, decoder_list = self._make_decoder_forward(x, encoder_list)
+        x, decoder_list = self._make_decoder_forward(bottleneck, encoder_list)
 
         # Make hypercolumn
         if self.hypercolumn:
