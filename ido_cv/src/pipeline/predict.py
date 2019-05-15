@@ -10,7 +10,7 @@ from ..pipeline_class import Pipeline
 
 
 def prediction(model, pipeline: Pipeline, dataset_class=None, data_path: str = None,
-               batch_size: int = 1, workers: int = 1, threshold: float = None,
+               batch_size: int = 1, workers: int = 1, threshold: (list, float) = None,
                postprocess: bool = False, output_path: str = '', show_preds: bool = False,
                save_preds: bool = False, **kwargs):
     """ Inference process

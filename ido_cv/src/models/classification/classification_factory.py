@@ -35,8 +35,9 @@ class ClassifierFactory(EncoderCommon):
         self.fc = nn.Linear(self.encoder_filters[depth - 1], num_classes)
 
     def forward(self, x):
-        x, _ = self._make_encoder_forward(x)
-        out = self.avgpool(x)
+        encoder_list = self._make_encoder_forward(x)
+        out = encoder_list[-1]
+        out = self.avgpool(out)
         out = out.view(out.size(0), -1)
         out = self.fc(out)
         return out

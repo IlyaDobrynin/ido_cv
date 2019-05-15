@@ -1,4 +1,5 @@
-backbone: 'resnet34'
+#backbone: 'resnet34'
+backbone: 'wrn50_2'
 depth: 4
 num_classes: 11
 num_filters: 32

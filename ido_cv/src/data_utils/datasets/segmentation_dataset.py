@@ -194,7 +194,7 @@ class MultSegDataset(Dataset):
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         else:
             image = self.data_file[self.data_file['names'] == fname]['images'].values[0]
-        image = resize_image(image=image, size=self.initial_size)
+        # image = resize_image(image=image, size=self.initial_size)
 
         if self.train:
             if self.from_path:
@@ -202,13 +202,13 @@ class MultSegDataset(Dataset):
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
             else:
                 mask = self.data_file[self.data_file['names'] == fname]['masks'].values[0]
-            mask = resize_image(image=mask, size=self.initial_size, interpolation=cv2.INTER_NEAREST)
+            # mask = resize_image(image=mask, size=self.initial_size, interpolation=cv2.INTER_NEAREST)
             return self._get_trainset(image, mask, fname)
         else:
             return self._get_testset(image, fname)
     
     def _get_trainset(self, image, mask, name):
-        image = pad(image)
+        image = pad(image, mode='edge')
         image = resize(image, size=self.model_input_size)
         mask = pad(mask)
         mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
@@ -230,6 +230,7 @@ class MultSegDataset(Dataset):
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             viz_mask = np.moveaxis(mask.data.numpy(), 0, -1)[:, :, 0]
+            print(str(name))
             draw_images([viz_image, viz_mask])
         
         return image, mask, str(name)

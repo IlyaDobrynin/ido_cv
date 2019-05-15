@@ -1,5 +1,5 @@
 #data_dir: /home/ilyado/Programming/pet_projects/ido_cv/data/19042019/segmentation/binary/without_handmonth
-data_dir: /home/ilyado/Programming/pet_projects/ido_cv/data/19042019/segmentation/multi/without_handmonth
+data_dir: /home/ilyado/Programming/pet_projects/ido_cv/data/15052019/thick_images/segmentation/multi/without_handmonth
 #data_dir: /home/ilyado/Programming/pet_projects/ido_cv/data/caltech_classify/classify_dataset
 output_dir: /home/ilyado/Programming/pet_projects/ido_cv/output
-weights_path: /home/ilyado/Programming/pet_projects/ido_cv/output/models/segmentation/multi/unet/20190514T2305/weights/epoch-1_jaccard-0.58000.pth
+#weights_path: /home/ilyado/Programming/pet_projects/ido_cv/output/models/segmentation/multi/unet/20190514T2305/weights/epoch-1_jaccard-0.58000.pth

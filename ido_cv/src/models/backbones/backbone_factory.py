@@ -6,7 +6,7 @@ Simple backbones factory
 from .pretrained_models import (
     resnet101, resnet50, resnet34, resnet18, se_resnext50,
     dilated_resnet18, dilated_resnet34, dilated_resnet50,
-    dilated_resnet101, dilated_resnet152
+    dilated_resnet101, dilated_resnet152, wrn50_2
 )
 
 
@@ -24,7 +24,10 @@ BACKBONES = {
     'dilated_resnet101': dilated_resnet101,
     'dilated_resnet50': dilated_resnet50,
     'dilated_resnet34': dilated_resnet34,
-    'dilated_resnet18': dilated_resnet18
+    'dilated_resnet18': dilated_resnet18,
+
+    # imgclsmob
+    'wrn50_2': wrn50_2
 }
 
 

@@ -6,6 +6,7 @@ Module implements base class for classification pipeline
 import os
 import gc
 import copy
+import warnings
 from pathlib import Path
 from abc import ABC, abstractmethod
 import cv2
@@ -31,6 +32,7 @@ from .data_utils.datasets.segmentation_dataset import MultSegDataset
 from .data_utils.datasets.detection_dataset import RetinaDataset
 from .data_utils.data_augmentations import Augmentations
 
+from .utils.get_model_config import ConfigParser
 from .utils import model_utils
 from .utils.image_utils import unpad_bboxes
 from .utils.image_utils import resize_bboxes
@@ -39,7 +41,6 @@ from .utils.image_utils import resize
 from .utils.image_utils import draw_images
 from .utils.image_utils import delete_small_instances
 from .utils.metric_utils import get_opt_threshold
-from .utils.get_model_config import ConfigParser
 from .utils.metrics.detection_metrics import mean_ap
 
 pd.set_option('display.max_columns', 10)
@@ -211,12 +212,13 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, save_path: str, device_ids: list = None,
+    def get_model(self, model_name: str, save_path: str = None, device_ids: list = None,
                   cudnn_bench: bool = False, path_to_weights: str = None,
-                  model_parameters: dict = None, show_model: bool = True) -> tuple:
+                  model_parameters: dict = None, show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
+        :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
         :param path_to_weights: Path to the trained weights
@@ -245,13 +247,24 @@ class Pipeline(AbstractPipeline):
             facade = ModelsFacade(task=self.task, model_name=model_name)
             model = facade.get_model(**model_parameters)
         else:
+
             if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
+            # Load model class and weights
             path_to_model = Path(path_to_weights).parents[1]
+
+            # Get saved configs
+            cfg_path = os.path.join(path_to_model, 'hyperparameters.yml')
+            if not os.path.exists(cfg_path):
+                raise ValueError(
+                    f"Path {cfg_path} does not exists."
+                )
+            cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
+            model_parameters = cfg_parser.parameters['model_parameters']
+
+            # Get path to saved model class
             model_class_path = os.path.join(path_to_model, 'model_class')
-            # model = model_utils.load_model_class(model_class_path=model_class_path)
-            # torch.nn.Module.dump_patches = True
 
             if self.allocate_on == 'cpu':
                 device = torch.device('cpu')
@@ -261,7 +274,6 @@ class Pipeline(AbstractPipeline):
                 model_weights = {key.replace('module.', ''): value
                                  for key, value in model_dict['model_weights'].items()
                                  if 'module' in key}
-                # print(model_weights['encoder_layers.0.0.weight'].is_cuda)
             else:
                 model = torch.load(str(model_class_path))
                 model_dict = torch.load(str(path_to_weights))
@@ -274,11 +286,13 @@ class Pipeline(AbstractPipeline):
             initial_parameters['step'] = model_dict['step']
             initial_parameters['best_measure'] = model_dict['best_measure']
 
-        print(
-            f'Train process runs with {model_name} parameters: \n{model_parameters}'
-        )
+        print(f'Train process runs with {model_name} parameters: \n{model_parameters}')
 
-        torch.save(model, os.path.join(save_path, 'model_class'))
+        if save_path is not None:
+            torch.save(model, os.path.join(save_path, 'model_class'))
+        else:
+            msg = "Model class will not save"
+            warnings.warn(msg, Warning)
 
         # Locate model into device
         model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
@@ -738,13 +752,17 @@ class Pipeline(AbstractPipeline):
                     else:  # self.mode == 'multi'
                         outputs = model(inputs)
                         outputs = torch.softmax(outputs, dim=1)
-                        out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1)
-                        out_masks = np.asarray([
-                            unpad(
-                                resize(img, size=self.img_size_orig[1]),
-                                img_shape=self.img_size_orig)
-                            for img in out_masks
-                        ], dtype=np.float32)
+                        out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1).astype(np.float32)
+                        # out_masks = np.asarray([
+                        #     unpad(
+                        #         resize(
+                        #             img,
+                        #             size=self.img_size_orig[1],
+                        #             interpolation=cv2.INTER_NEAREST
+                        #         ),
+                        #         img_shape=self.img_size_orig)
+                        #     for img in out_masks
+                        # ], dtype=np.float32)
                         if predictions['masks'] is None:
                             predictions['masks'] = out_masks
                         else:
@@ -829,8 +847,12 @@ class Pipeline(AbstractPipeline):
                     threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
                         else threshold
                     postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
-                    for ch in range(1, mask.shape[-1]):
-                        mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
+                    for ch in range(0, mask.shape[-1]):
+                        if ch == 0:
+                            threshold_0 = 0.5
+                            mask_ch = (mask[:, :, ch] > threshold_0).astype(np.uint8)
+                        else:
+                            mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
                         mask_ch = delete_small_instances(
                             mask_ch,
                             obj_size=obj_size,
@@ -887,7 +909,7 @@ class Pipeline(AbstractPipeline):
                             print(f'- best {m_k}: {m_v:.5f}')
 
             else:  # self.mode == 'multi'
-                masks_p = np.moveaxis(masks_p, -1, 1)
+                # masks_p = np.moveaxis(masks_p, -1, 1)
                 out_metrics = dict()
                 colors = allowed_parameters.SEG_MULTI_COLORS  # HARDCODE
                 for i, (class_name, class_color) in enumerate(colors.items()):
@@ -895,7 +917,10 @@ class Pipeline(AbstractPipeline):
                     if i + 1 == 11:  # HARDCODE
                         continue
                     class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
-                    class_masks_p = masks_p[:, i + 1, :, :]
+                    class_masks_p = masks_p[..., i + 1]
+
+                    # for img_idx in range(0, 10):
+                    #     draw_images([class_masks_t[img_idx, ...], class_masks_p[img_idx, ...]])
 
                     out_metrics[class_name] = dict()
                     for m_name in metric_names:

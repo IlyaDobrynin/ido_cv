@@ -71,7 +71,8 @@ def main_pipe(args):
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']
-    args['best_measure'] = initial_parameters['best_measure']
+    # args['best_measure'] = initial_parameters['best_measure']
+    args['best_measure'] = 0
     args['model_parameters'] = model_parameters
 
     # Paths
@@ -95,7 +96,7 @@ def main_pipe(args):
                 cudnn_benchmark=args['cudnn_benchmark'], lr_factor=args['lr_factor'],
                 path_to_weights=args['path_to_weights']
             )
-        
+
         # Training line
         if 't' in args['stages']:
             # Save hyperparameters dictionary
@@ -113,9 +114,9 @@ def main_pipe(args):
                 workers=args['workers'], shuffle_train=args['shuffle_train'],
                 augs=args['train_augs'], patience=args['patience'],
                 learning_rate=args['learning_rate']
-
             )
 
+        # Validation (metrics evaluation) line
         if 'v' in args['stages']:
             # Validation (metrics evaluation) line
             print('-' * 30, ' VALIDATION ', '-' * 30)
@@ -125,12 +126,13 @@ def main_pipe(args):
                 workers=args['workers'], save_preds=args['save_val'],
                 output_path=args['output_path']
             )
+            # Save thresholds dict
+            with open(os.path.join(model_save_dir, 'thresholds.yml'), 'w') as outfile:
+                yaml.dump(scores, outfile, default_flow_style=False)
 
     # Prediction line
     if 'p' in args['stages']:
         print('-' * 30, ' PREDICTION ', '-' * 30)
-        # threshold = scores[args['checkpoint_metric']]['threshold'] if scores is not None \
-        #     else args['default_threshold']
         threshold = None
         if args['task'] == 'segmentation':
             if args['mode'] == 'binary':
@@ -146,4 +148,3 @@ def main_pipe(args):
                    batch_size=args['batch_size'], workers=args['workers'], threshold=threshold,
                    postprocess=args['postproc_test'], output_path=args['output_path'],
                    show_preds=args['show_preds'], save_preds=args['save_test'])
-

@@ -105,6 +105,11 @@ def save_model_class(model_class: nn.Module, save_path: str):
 
 
 def load_model_class(model_class_path: str):
+    """ Function unpickle model class
+
+    :param model_class_path: Path to model class
+    :return:
+    """
     with open(model_class_path, "rb") as file:
         unpickled = pickle.loads(file.read())
     return unpickled

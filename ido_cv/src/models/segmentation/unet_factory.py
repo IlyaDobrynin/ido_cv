@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from ..nn_blocks.classic_unet_blocks import DecoderBlock
 from ..nn_blocks.classic_unet_blocks import DecoderBlockResidual
+from ..nn_blocks.classic_unet_blocks import IdentityBlock
 from ..nn_blocks.encoders import EncoderCommon
 from ..nn_blocks.common_blocks import Conv
 from ..nn_blocks.common_blocks import ConvBnRelu
@@ -102,6 +103,15 @@ class UnetFactory(EncoderCommon):
             self.decoder_filters.append(self.num_filters * (2 ** i))
         self.decoder_layers = self._get_decoder()
 
+        self.identity_layer = IdentityBlock(
+            in_channels=self.num_input_channels,
+            out_channels=self.num_filters,
+            depthwise=self.depthwise,
+            bn_type=self.bn_type,
+            conv_type=self.conv_type,
+            add_se=self.se_decoder
+        )
+
         if self.mid_block is not None:
             if self.mid_block == 'dilation':
                 self.dilate_depth = dilate_depth
@@ -151,7 +161,8 @@ class UnetFactory(EncoderCommon):
             hypercolumn_parameters = dict(
                 in_channels=self.num_filters * (len(self.decoder_layers) + 1),
                 out_channels=self.decoder_filters[1],
-                kernel_size=1,
+                kernel_size=3,
+                padding=1,
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
             )
@@ -190,11 +201,8 @@ class UnetFactory(EncoderCommon):
         self.final_layer = nn.Conv2d(
             in_channels=self.num_filters,
             out_channels=self.num_classes,
-            kernel_size=3,
-            padding=1
+            kernel_size=1
         )
-
-        print('DSJDLKSJFLJFSDJH')
 
     def _get_dilation_layers(self):
         """ Function to define dilation bottleneck layers
@@ -301,18 +309,19 @@ class UnetFactory(EncoderCommon):
             hc_parameters = dict(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=1,
+                kernel_size=3,
+                padding=1,
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
             )
             hc_layers.append(
                 Conv(
                     **hc_parameters
-                )
+                # )
                 # ConvBnRelu(
                 #     bn_type=self.bn_type,
                 #     **hc_parameters
-                # )
+                )
             )
         return hc_layers
 
@@ -389,6 +398,7 @@ class UnetFactory(EncoderCommon):
         h, w = x.size()[2], x.size()[3]
 
         # Get encoder features
+        # first_enc_identity = self.identity_layer(x)
         encoder_list = self._make_encoder_forward(x)
         bottleneck = encoder_list[-1]
 
