@@ -177,18 +177,25 @@ class UnetFactory(EncoderCommon):
 
         final_decoder_parameters = dict(
             out_channels=self.num_filters,
-            residual_depth=2,
-            dropout_rate=self.dropout_rate,
-            se_include=self.se_decoder,
+            kernel_size=3,
+            padding=1,
             depthwise=self.depthwise,
-            upscale_mode=self.upscale_mode,
             bn_type=self.bn_type,
             conv_type=self.conv_type
         )
-        self.final_decoder_layer = DecoderBlockResidual(
-            in_skip_ch=self.num_filters,
-            in_dec_ch=self.decoder_filters[1],
-            **final_decoder_parameters
+        self.final_decoder_layer = nn.Sequential(
+            OrderedDict(
+                [
+                    ("final_dec_conv_1", ConvBnRelu(
+                        in_channels=self.decoder_filters[1],
+                        **final_decoder_parameters
+                    )),
+                    ("final_dec_conv_2", ConvBnRelu(
+                        in_channels=self.num_filters,
+                        **final_decoder_parameters
+                    ))
+                ]
+            )
         )
 
         self.final_layer = nn.Conv2d(
@@ -391,11 +398,7 @@ class UnetFactory(EncoderCommon):
         h, w = x.size()[2], x.size()[3]
 
         # Get encoder features
-<<<<<<< HEAD
-        first_enc_identity = self.identity_layer(x)
-=======
         # first_enc_identity = self.identity_layer(x)
->>>>>>> c7f28de1b0c28221b7a44d0f3f810c71718d0496
         encoder_list = self._make_encoder_forward(x)
         bottleneck = encoder_list[-1]
 

@@ -250,19 +250,21 @@ class DecoderBlockResidual(nn.Module):
         residual_parameters = dict(
             in_channels=out_channels,
             out_channels=out_channels,
-            kernel_size=3,
-            padding=1,
             depthwise=depthwise,
+            add_se=se_include,
+            bn_type=bn_type,
             conv_type=conv_type
         )
         self.residual_layers = nn.ModuleList([
             ResidualBlock(**residual_parameters) for _ in range(residual_depth)
         ])
         self.relu = nn.ReLU(inplace=True)
+        self.dropout = nn.Dropout2d(p=dropout_rate)
 
     def forward(self, x, skip):
         h, w = skip[0].size()[2], skip[0].size()[3]
         x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
+
         # x = self.conv(x)
         # skip.append(x)
         # skip = [layer.unsqueeze(-1) for layer in skip]

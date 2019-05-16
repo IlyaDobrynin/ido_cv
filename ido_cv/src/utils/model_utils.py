@@ -104,11 +104,7 @@ def save_model_class(model_class: nn.Module, save_path: str):
     return save_path
 
 
-<<<<<<< HEAD
-def load_model_class(model_class_path):
-=======
 def load_model_class(model_class_path: str):
->>>>>>> c7f28de1b0c28221b7a44d0f3f810c71718d0496
     """ Function unpickle model class
 
     :param model_class_path: Path to model class

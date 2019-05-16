@@ -130,8 +130,8 @@ class EncoderCommon(nn.Module):
         else:
             for encoder_layer in self.encoder_layers:
                 x = encoder_layer(x)
-                encoder_list.append(x.clone())
-        return x, encoder_list
+                encoder_list.append(x)
+        return encoder_list
     
     def forward(self, x):
         raise NotImplementedError
