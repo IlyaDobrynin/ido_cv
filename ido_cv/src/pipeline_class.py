@@ -217,6 +217,7 @@ class Pipeline(AbstractPipeline):
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
+        :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
         :param path_to_weights: Path to the trained weights
@@ -245,9 +246,11 @@ class Pipeline(AbstractPipeline):
             facade = ModelsFacade(task=self.task, model_name=model_name)
             model = facade.get_model(**model_parameters)
         else:
+
             if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
+            # Load model class and weights
             path_to_model = Path(path_to_weights).parents[1]
             model_class_path = os.path.join(path_to_model, 'model_class')
             # model = model_utils.load_model_class(model_class_path=model_class_path)
