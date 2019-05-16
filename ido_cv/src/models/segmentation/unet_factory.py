@@ -197,8 +197,6 @@ class UnetFactory(EncoderCommon):
             kernel_size=1
         )
 
-        print('DSJDLKSJFLJFSDJH')
-
     def _get_dilation_layers(self):
         """ Function to define dilation bottleneck layers
 
@@ -393,7 +391,11 @@ class UnetFactory(EncoderCommon):
         h, w = x.size()[2], x.size()[3]
 
         # Get encoder features
+<<<<<<< HEAD
         first_enc_identity = self.identity_layer(x)
+=======
+        # first_enc_identity = self.identity_layer(x)
+>>>>>>> c7f28de1b0c28221b7a44d0f3f810c71718d0496
         encoder_list = self._make_encoder_forward(x)
         bottleneck = encoder_list[-1]
 

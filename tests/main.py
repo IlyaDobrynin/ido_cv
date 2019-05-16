@@ -58,12 +58,12 @@ parameters = dict(
     in_size_orig=(45, 256),
     in_size_target=256,
 
-    # device_ids=[0, 1],
-    device_ids=[-1],
+    device_ids=[0, 1],
+    # device_ids=[-1],
     # device_ids=[0],
-    workers=12,
+    workers=10,
     batch_size=32,
-    learning_rate=0.001,
+    learning_rate=0.0003,
     epochs=200,
 
 

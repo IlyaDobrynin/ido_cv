@@ -71,7 +71,8 @@ def main_pipe(args):
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']
-    args['best_measure'] = initial_parameters['best_measure']
+    # args['best_measure'] = initial_parameters['best_measure']
+    args['best_measure'] = 0
     args['model_parameters'] = model_parameters
 
     # Paths
@@ -125,6 +126,9 @@ def main_pipe(args):
                 workers=args['workers'], save_preds=args['save_val'],
                 output_path=args['output_path']
             )
+            # Save thresholds dict
+            with open(os.path.join(model_save_dir, 'thresholds.yml'), 'w') as outfile:
+                yaml.dump(scores, outfile, default_flow_style=False)
 
     # Prediction line
     if 'p' in args['stages']:

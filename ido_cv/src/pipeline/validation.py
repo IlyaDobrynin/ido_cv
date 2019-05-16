@@ -75,7 +75,12 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
     # Get score for segmentation
     elif task == 'segmentation':
         labels_path = os.path.join(data_path, 'masks')
-        true_df = get_true_segmentation(labels_path=labels_path, mode=mode)
+        true_df = get_true_segmentation(
+            labels_path=labels_path,
+            mode=mode,
+            size=pipeline.img_size_target
+        )
+
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
@@ -91,7 +96,4 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
             pred_df=pred_df,
             metric_names=val_metrics
         )
-        for k, v in scores.items():
-            print(f'{k} metric: {v}')
-
     return scores
