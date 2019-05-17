@@ -57,6 +57,7 @@ class Augmentations:
                              scale_limit=(-0.2, 0.2),
                              rotate_limit=5,
                              border_mode=cv2.BORDER_CONSTANT,
+                             interpolation=cv2.INTER_AREA,
                              p=0.5),
         ], p=self.p)
 

@@ -1,45 +1,74 @@
-from .models.detection.retinanet import RetinaNet
-from .models.segmentation.unet_factory import UnetFactory
-from .models.segmentation.fpn_factory import FPNFactory
-from .models.segmentation.deeplabv3 import DeepLabV3
-from .models.classification.classification_factory import ClassifierFactory
-from .utils.loss.detection_losses import FocalLoss
-from .utils.loss.segmentation_losses import BinaryBceMetric
-from .utils.loss.segmentation_losses import MultiBceMetric
-from .utils.loss.segmentation_losses import MultiLovasz
-from .utils.loss.classification_losses import BCELoss
-from .utils.loss.classification_losses import NllLoss, CELoss
-from .utils.metrics.segmentation_metrics import SegmentationMetrics
-from .utils.metrics.classification_metrics import ClassificationMetrics
 from .utils import tta
 
 
-LOSSES = {
+TASKS_MODES = {
+    'segmentation': {
+        'binary': [
+            'unet',
+            'fpn',
+            'deeplabv3'
+        ],
+        'multi': [
+            'unet',
+            'fpn',
+            'deeplabv3'
+        ],
+    },
+    'detection': {
+        'all': 'retinanet'
+    },
+    'classification': {
+        'binary': ['basic_model'],
+        'multi': ['basic_model']
+    }
+}
+
+
+LOSS_PARAMETERS = {
     'segmentation': {
         'binary': {
-            "bce_jaccard": BinaryBceMetric(metric='jaccard', weight_type=None, alpha=0.7),
-            "bce_dice": BinaryBceMetric(metric='dice', weight_type=None, alpha=0.7),
-            "bce_lovasz": BinaryBceMetric(metric='lovasz', weight_type=None, alpha=0.7, per_image=True)
+            "bce_jaccard": dict(
+                metric='jaccard',
+                weight_type=None,
+                alpha=0.4
+            ),
+            "bce_dice": dict(
+                metric='dice',
+                weight_type=None,
+                alpha=0.4
+            )
         },
         'multi': {
-            "bce_jaccard": MultiBceMetric(num_classes=11, metric='jaccard'),
-            "bce_dice": MultiBceMetric(num_classes=11, metric='dice'),
-            "lovasz": MultiLovasz(ignore=0)
+            "bce_jaccard": dict(
+                num_classes=11,
+                metric='jaccard',
+                alpha=0.3,
+                class_weights=[0.1, 0.4, 0.5, 0.5, 0.2, 0.2, 0.1, 0.1, 0.2, 0.4, 0.1]
+            ),
+            "bce_dice": dict(
+                num_classes=11,
+                metric='dice',
+                alpha=0.3,
+                class_weights=[0.1, 0.8, 0.8, 0.8, 0.2, 0.2, 0.1, 0.1, 0.2, 0.2, 0.1]
+            ),
+            "lovasz": dict(
+                ignore=0
+            )
         }
     },
     'detection': {
         'all': {
-            'focal_loss': FocalLoss()
+            'focal_loss': dict()
         }
 
     },
     'classification': {
         'binary': {
-            'bce': BCELoss()
+            'bce': dict()
         },
         'multi': {
-            'nll': NllLoss(),
-            'ce': CELoss()
+            'nll': dict(),
+            'ce': dict()
         }
     }
 }
@@ -58,64 +87,70 @@ METRIC_NAMES = {
     }
 }
 
-METRICS = {
-    'segmentation': SegmentationMetrics,
-    'detection': {
-        'all': {
-            'map': None,
-        }
+# ToDo add detection metrics
+METRIC_PARAMETERS = {
+    'segmentation': {
+        'binary': dict(
+            activation='sigmoid',
+            device='cpu'
+        ),
+        'multi': dict(
+            activation='softmax',
+            device='cpu'
+        )
     },
-    'classification': ClassificationMetrics
+    'detection': {
+        'all': None
+    },
+    'classification': {
+        'binary': dict(activation='sigmoid'),
+        'multi': dict(activation='softmax')
+    }
 }
 
-MODELS = {
+MODEL_PARAMETERS = {
     'segmentation': {
         'binary': {
             'unet': {
-                'default_parameters': {
-                    'backbone': 'resnet34',
-                    'depth': 4,
-                    'num_classes': 1,
-                    'num_filters': 32,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'custom_enc_start': False,
-                    'num_input_channels': 3,
-                    'dropout_rate': 0.2,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'upscale_mode': 'nearest',
-                    'depthwise': False,
-                    'residual': True,
-                    'mid_block': None,
-                    'dilate_depth': 1,
-                    'gau': False,
-                    'hypercolumn': True,
-                    'se_decoder': True
-                }
+                'backbone': 'resnet34',
+                'depth': 4,
+                'num_classes': 1,
+                'num_filters': 32,
+                'pretrained': 'imagenet',
+                'unfreeze_encoder': True,
+                'custom_enc_start': False,
+                'num_input_channels': 3,
+                'dropout_rate': 0.2,
+                'bn_type': 'default',
+                'conv_type': 'default',
+                'upscale_mode': 'nearest',
+                'depthwise': False,
+                'residual': True,
+                'mid_block': None,
+                'dilate_depth': 1,
+                'gau': False,
+                'hypercolumn': True,
+                'se_decoder': True
             },
             'fpn': {
-                'default_parameters': {
-                    'backbone': 'resnet34',
-                    'depth': 4,
-                    'num_classes': 1,
-                    'num_filters': 32,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'custom_enc_start': False,
-                    'num_input_channels': 3,
-                    'dropout_rate': 0.2,
-                    'upscale_mode': 'nearest',
-                    'depthwise': False,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'residual': True,
-                    'gau': False,
-                    'se_decoder': True
-                }
+                'backbone': 'resnet34',
+                'depth': 4,
+                'num_classes': 1,
+                'num_filters': 32,
+                'pretrained': 'imagenet',
+                'unfreeze_encoder': True,
+                'custom_enc_start': False,
+                'num_input_channels': 3,
+                'dropout_rate': 0.2,
+                'upscale_mode': 'nearest',
+                'depthwise': False,
+                'bn_type': 'default',
+                'conv_type': 'default',
+                'residual': True,
+                'gau': False,
+                'se_decoder': True
             },
             'deeplabv3': {
-                'default_parameters': {
                     'backbone': 'dilated_resnet34',
                     'num_classes': 1,
                     'pretrained': 'imagenet',
@@ -125,12 +160,10 @@ MODELS = {
                     'conv_type': 'default',
                     'residual': True,
                     'se_decoder': True
-                }
             }
         },
         'multi': {
             'unet': {
-                'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
                     'num_classes': 11,
@@ -149,11 +182,9 @@ MODELS = {
                     'dilate_depth': 1,
                     'gau': False,
                     'hypercolumn': True,
-                    'se_decoder': False,
-                }
+                    'se_decoder': False
             },
             'fpn': {
-                'default_parameters': {
                     'backbone': 'resnet34',
                     'depth': 4,
                     'num_classes': 11,
@@ -170,10 +201,8 @@ MODELS = {
                     'residual': True,
                     'gau': False,
                     'se_decoder': True
-                }
             },
             'deeplabv3': {
-                'default_parameters': {
                     'backbone': 'dilated_resnet34',
                     'num_classes': 11,
                     'pretrained': 'imagenet',
@@ -182,41 +211,34 @@ MODELS = {
                     'bn_type': 'default',
                     'conv_type': 'default',
                     'residual': True,
-                    'se_decoder': True,
-                }
-            }
-        }
+                    'se_decoder': True
+            },
+        },
     },
     'detection': {
         'all': {
             'RetinaNet': {
-                'default_parameters': {
-                    'backbone': 'resnet34',
-                    'se_block': False,
-                    'residual': True,
-                }
+                'backbone': 'resnet34',
+                'se_block': False,
+                'residual': True
             }
-        },
+        }
     },
     'classification': {
         'binary': {
             'basic_model': {
-                'default_parameters': {
                     'backbone': 'resnet34',
                     'num_classes': 1,
                     'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                }
+                    'unfreeze_encoder': True
             }
         },
         'multi': {
             'basic_model': {
-                'default_parameters': {
                     'backbone': 'resnet34',
                     'num_classes': 5,
                     'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                }
+                    'unfreeze_encoder': True
             }
         }
     }

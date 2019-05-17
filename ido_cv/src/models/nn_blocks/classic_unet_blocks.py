@@ -275,7 +275,6 @@ class DecoderBlockResidual(nn.Module):
         skip.append(x)
         x = torch.cat(skip, dim=1)
         x = self.conv(x)
-
         x = self.dropout(x)
         for i, res_layer in enumerate(self.residual_layers):
             x = res_layer(x)

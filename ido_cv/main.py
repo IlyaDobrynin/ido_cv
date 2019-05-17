@@ -15,9 +15,6 @@ from . import validation
 from . import prediction
 
 # Get parameters
-METRICS = allowed_parameters.METRICS
-OPTIMIZERS = allowed_parameters.OPTIMIZERS
-CHECKPOINT_METRICS = allowed_parameters.CHECKPOINT_METRICS
 TTA = allowed_parameters.TTA
 
 
@@ -89,7 +86,7 @@ def main_pipe(args):
         if 'f' in args['stages']:
             print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
-                pipeline=pipe_class, model_name=args['model_name'], path_to_dataset=path_to_train,
+                pipeline=pipe_class, model_name=args['model_name'], data_path=path_to_train,
                 model_parameters=args['model_parameters'],
                 batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
                 use_augs=args['train_augs'], device_ids=args['device_ids'],

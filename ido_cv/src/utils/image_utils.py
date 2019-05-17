@@ -249,6 +249,23 @@ def draw_images(images_list: list, orient: str = 'horizontal'):
         ax.imshow(image)
     plt.show()
 
+def draw_image_boxes(image, boxes, labels, scores):
+    draw = image.copy()
+    print("-"*30, "\n")
+    preds = [(box, label, score) for box, label, score in zip(boxes, labels, scores)]
+    # preds = sorted(preds, key=lambda x: x[0][0])
+    # print(preds)
+    for pred in preds:
+        box = pred[0]
+        label = pred[1]
+        score = pred[2]
+        draw = cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 1)
+        plt.annotate(label, xy=(box[0], box[1]), color='green')
+        plt.annotate('{:.2f}'.format(score), xy=(box[0], box[3]+10), color='green')
+        print(box, label, score)
+    plt.imshow(draw)
+    plt.show()
+
 
 def convert_multilabel_mask(mask: np.ndarray, colors: dict, how: str = 'rgb2class',
                             ignore_class: int = None) -> np.ndarray:
