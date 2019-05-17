@@ -20,6 +20,8 @@ def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, che
     :param pipeline: Pipeline class
     :param train_data_path: Path to train images
     :param val_data_path: Path to validation images
+    :param train_dataset_class: Dataset class for training data
+    :param val_dataset_class: Dataset class for validation data
     :param model_save_dir: Path to save model files
     :param val_metrics: List of validation metrics names
     :param checkpoint_metric: Name of the metric, which will be monitored for early stopping

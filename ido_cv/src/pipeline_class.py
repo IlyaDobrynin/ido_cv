@@ -104,9 +104,10 @@ class Pipeline(AbstractPipeline):
 
     """
 
-    def __init__(self, task: str, mode: str, loss_name: str, optim_name: str, time: str = None,
-                 allocate_on: str = 'cpu', tta_list: list = None, random_seed: int = 1,
-                 img_size_orig: (int, tuple) = None, img_size_target: (int, tuple) = None):
+    def __init__(self, task: str, mode: str, loss_name: str = None, optim_name: str = None,
+                 time: str = None, allocate_on: str = 'cpu', tta_list: list = None,
+                 random_seed: int = 1, img_size_orig: (int, tuple) = None,
+                 img_size_target: (int, tuple) = None):
 
         super(Pipeline, self).__init__()
 
@@ -138,9 +139,10 @@ class Pipeline(AbstractPipeline):
             self.tta_list = tta_list
 
         # Get loss for training
-        loss_facade = LossesFacade(self.task, self.mode, loss_name)
-        loss_parameters = LOSS_PARAMETERS[self.task][self.mode][loss_name]
-        self.criterion = loss_facade.get_loss(**loss_parameters)
+        if loss_name is not None:
+            loss_facade = LossesFacade(self.task, self.mode, loss_name)
+            loss_parameters = LOSS_PARAMETERS[self.task][self.mode][loss_name]
+            self.criterion = loss_facade.get_loss(**loss_parameters)
 
         # Get metrics for training
         metric_facade = MetricsFacade(task=self.task)
@@ -409,7 +411,7 @@ class Pipeline(AbstractPipeline):
         return opt_lr
 
     def train(self, model: nn.Module, lr: float, train_loader: DataLoader, val_loader: DataLoader,
-              metric_names: tuple, best_measure: float, first_step: int = 0, first_epoch: int=0,
+              metric_names: list, best_measure: float, first_step: int = 0, first_epoch: int = 0,
               chp_metric: str = 'loss', n_epochs: int = 1, n_best: int = 1, scheduler: str = 'rop',
               patience: int = 10, save_dir: str = '') -> nn.Module:
         """ Training pipeline function
@@ -564,7 +566,7 @@ class Pipeline(AbstractPipeline):
 
         return model
 
-    def validation(self, model: nn.Module, dataloader: DataLoader, metric_names: tuple,
+    def validation(self, model: nn.Module, dataloader: DataLoader, metric_names: list,
                    verbose: int = 1) -> dict:
         """ Function to make validation of the model
 

@@ -64,7 +64,8 @@ def main_pipe(args):
         device_ids=args['device_ids'],
         cudnn_bench=args['cudnn_benchmark'],
         path_to_weights=args['path_to_weights'],
-        model_parameters=args['model_parameters']
+        model_parameters=args['model_parameters'],
+        verbose=True
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']
