@@ -258,17 +258,11 @@ class UnetFactory(EncoderCommon):
             if i == 1:
                 in_skip_ch = self.encoder_filters[rev_i - 1]
                 in_dec_ch = self.encoder_filters[rev_i]
-            # elif i == self.depth - 1:
-            #     in_skip_ch = self.decoder_filters[1]
-            #     in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
             else:
                 in_skip_ch = self.encoder_filters[rev_i - 1]
                 in_dec_ch = self.num_filters * (2 ** (rev_i + 1))
 
             out_channels = self.decoder_filters[rev_i]
-
-            # print('_get_decoder', i, rev_i, in_skip_ch, in_dec_ch, out_channels)
-
             decoder_parameters = dict(
                 in_skip_ch=in_skip_ch,
                 in_dec_ch=in_dec_ch,
@@ -312,9 +306,6 @@ class UnetFactory(EncoderCommon):
                 conv_type=self.conv_type
             )
             hc_layers.append(
-                # Conv(
-                #     **hc_parameters
-                # )
                 ConvBnRelu(
                     bn_type=self.bn_type,
                     **hc_parameters
@@ -371,18 +362,13 @@ class UnetFactory(EncoderCommon):
         h, w = decoder_list[-1].size(2), decoder_list[-1].size(3)
 
         first_hc = self.hypercolumn_layers[0](encoder_last)
-        # first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
         first_hc = F.interpolate(first_hc, size=(h, w), mode='nearest')
-        # hc.append(first_hc.unsqueeze(-1))
         hc.append(first_hc)
         for i, decoder in enumerate(decoder_list):
             hc_layer = self.hypercolumn_layers[i + 1](decoder)
-            # hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=False)
             hc_layer = F.interpolate(hc_layer, size=(h, w), mode='nearest')
-            # hc.append(hc_layer.unsqueeze(-1))
             hc.append(hc_layer)
         out = torch.cat(hc, dim=1)
-        # out = torch.sum(out, dim=-1)
         del hc
         gc.collect()
         out = self.hc_conv(out)
@@ -395,7 +381,6 @@ class UnetFactory(EncoderCommon):
         h, w = x.size()[2], x.size()[3]
 
         # Get encoder features
-        # first_enc_identity = self.identity_layer(x)
         encoder_list = self._make_encoder_forward(x)
         bottleneck = encoder_list[-1]
 
@@ -419,8 +404,10 @@ class UnetFactory(EncoderCommon):
         if self.hypercolumn:
             x = self._make_hypercolumn_forward(encoder_list[-1], decoder_list)
 
+        # Make final decoder
         x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
         x = self.final_decoder_layer(x)
+
         # Make final layer
         x = self.final_layer(x)
         return x
