@@ -181,7 +181,9 @@ class Pipeline(AbstractPipeline):
                 f"At list one from dataset_class path_to_dataset or data_file parameters "
                 f"should be filled!"
             )
-        if (self.task == 'segmentation') and (label_colors is None):
+        if (self.task == 'segmentation') \
+                and (self.mode == 'multi') \
+                and (label_colors is None):
             raise ValueError(
                 f"Provide label_colors for multiclass segmentation task!"
             )
@@ -614,7 +616,7 @@ class Pipeline(AbstractPipeline):
                 # Get parameters for metrics calculation function
                 if self.task == 'segmentation':
                     get_metric_parameters = dict(
-                        trues=targets, preds=outputs, metric_name=m_name, threshold=0.5
+                        trues=targets, preds=outputs, threshold=0.5
                     )
                     if self.mode == 'multi':
                         get_metric_parameters['per_class'] = True
@@ -623,12 +625,14 @@ class Pipeline(AbstractPipeline):
                     # TODO implement detection metric
                     raise NotImplementedError
                 else:  # self.task == 'classification'
-                    get_metric_parameters = dict(trues=targets, preds=outputs, metric_name=m_name)
+                    get_metric_parameters = dict(trues=targets, preds=outputs)
 
                 # Calculate metrics for the batch of images
                 for m_name in metric_names:
                     metric_values[m_name] += [
-                        self.val_metric_class.get_metric(**get_metric_parameters)
+                        self.val_metric_class.get_metric(
+                            metric_name=m_name, **get_metric_parameters
+                        )
                     ]
 
         # Calculate mean metrics for all images
