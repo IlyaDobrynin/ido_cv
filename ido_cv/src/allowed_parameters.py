@@ -40,16 +40,16 @@ LOSS_PARAMETERS = {
         },
         'multi': {
             "bce_jaccard": dict(
-                num_classes=11,
+                num_classes=22,
                 metric='jaccard',
                 alpha=0.3,
-                class_weights=[0.1, 0.4, 0.5, 0.5, 0.2, 0.2, 0.1, 0.1, 0.2, 0.4, 0.1]
+                # class_weights=[0.1, 0.4, 0.5, 0.5, 0.2, 0.2, 0.1, 0.1, 0.2, 0.4, 0.1]
             ),
             "bce_dice": dict(
-                num_classes=11,
+                num_classes=22,
                 metric='dice',
                 alpha=0.3,
-                class_weights=[0.1, 0.8, 0.8, 0.8, 0.2, 0.2, 0.1, 0.1, 0.2, 0.2, 0.1]
+                # class_weights=[0.1, 0.8, 0.8, 0.8, 0.2, 0.2, 0.1, 0.1, 0.2, 0.2, 0.1]
             ),
             "lovasz": dict(
                 ignore=0
@@ -60,7 +60,6 @@ LOSS_PARAMETERS = {
         'all': {
             'focal_loss': dict()
         }
-
     },
     'classification': {
         'binary': {
@@ -96,7 +95,7 @@ METRIC_PARAMETERS = {
         ),
         'multi': dict(
             activation='softmax',
-            device='cpu'
+            device='gpu'
         )
     },
     'detection': {
@@ -288,16 +287,76 @@ TTA = {
     }
 }
 
-SEG_MULTI_COLORS = {
-    0: [0, 0, 250],             #  0 digit
-    1: [50, 0, 0],              #  1 digit
-    2: [0, 50, 0],              #  2 digit
-    3: [0, 0, 50],              #  3 digit
-    4: [50, 50, 0],             #  4 digit
-    5: [50, 150, 0],            #  5 digit
-    6: [150, 50, 0],            #  6 digit
-    7: [50, 0, 50],             #  7 digit
-    8: [50, 150, 250],          #  8 digit
-    9: [0, 100, 250],           #  9 digit
-    10: [0, 100, 50],           #  Handlabelled word
+digits_colors = {
+    'background': [0, 0, 0],
+    '0_digit': [0, 0, 250],             #  0 digit
+    '1_digit': [50, 0, 0],              #  1 digit
+    '2_digit': [0, 50, 0],              #  2 digit
+    '3_digit': [0, 0, 50],              #  3 digit
+    '4_digit': [50, 50, 0],             #  4 digit
+    '5_digit': [50, 150, 0],            #  5 digit
+    '6_digit': [150, 50, 0],            #  6 digit
+    '7_digit': [50, 0, 50],             #  7 digit
+    '8_digit': [50, 150, 250],          #  8 digit
+    '9_digit': [0, 100, 250],           #  9 digit
+    '10_digit': [0, 100, 50],           #  Handlabelled word
 }
+
+
+# ToDo: remove code below
+import numpy as np
+
+def color_map(N=256, normalized=False):
+    def bitget(byteval, idx):
+        return ((byteval & (1 << idx)) != 0)
+
+    dtype = 'float32' if normalized else 'uint8'
+    cmap = np.zeros((N, 3), dtype=dtype)
+    for i in range(N):
+        r = g = b = 0
+        c = i
+        for j in range(8):
+            r = r | (bitget(c, 0) << 7-j)
+            g = g | (bitget(c, 1) << 7-j)
+            b = b | (bitget(c, 2) << 7-j)
+            c = c >> 3
+
+        cmap[i] = np.array([r, g, b])
+
+    cmap = cmap/255 if normalized else cmap
+    return cmap
+
+
+def get_pascal_color_map():
+    labels = [
+        'background',
+        'aeroplane',
+        'bicycle',
+        'bird',
+        'boat',
+        'bottle',
+        'bus',
+        'car',
+        'cat',
+        'chair',
+        'cow',
+        'diningtable',
+        'dog',
+        'horse',
+        'motorbike',
+        'person',
+        'pottedplant',
+        'sheep',
+        'sofa',
+        'train',
+        'tvmonitor'
+    ]
+    cmap = color_map()
+    colors = dict()
+    for i, cls in enumerate(labels):
+        colors[cls] = list(cmap[i])
+    # colors['void'] = [224, 224, 192]
+    return colors
+
+
+pascal_voc_colors = get_pascal_color_map()

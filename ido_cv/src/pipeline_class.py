@@ -159,8 +159,9 @@ class Pipeline(AbstractPipeline):
         self.time = time
 
     def get_dataloaders(self, dataset_class: Dataset = None, path_to_dataset: str = None,
-                        data_file: np.ndarray = None, batch_size: int = 1, is_train: bool =True,
-                        workers: int = 1, shuffle: bool = False, augs: bool = False) -> DataLoader:
+                        data_file: np.ndarray = None, batch_size: int = 1, is_train: bool = True,
+                        label_colors: dict = None, workers: int = 1, shuffle: bool = False,
+                        augs: bool = False) -> DataLoader:
         """ Function to make train data loaders
 
         :param dataset_class:   Dataset class
@@ -168,6 +169,7 @@ class Pipeline(AbstractPipeline):
         :param data_file:       Data file
         :param batch_size:      Size of data minibatch
         :param is_train:        Flag to specify dataloader type (train or test)
+        :param label_colors:    Colors for labeling for multiclass segmentation
         :param workers:         Number of multithread workers
         :param shuffle:         Flag for random shuffling train dataloader samples
         :param augs:            Flag to add augmentations
@@ -178,6 +180,10 @@ class Pipeline(AbstractPipeline):
             raise ValueError(
                 f"At list one from dataset_class path_to_dataset or data_file parameters "
                 f"should be filled!"
+            )
+        if (self.task == 'segmentation') and (label_colors is None):
+            raise ValueError(
+                f"Provide label_colors for multiclass segmentation task!"
             )
 
         if augs:
@@ -201,6 +207,7 @@ class Pipeline(AbstractPipeline):
                     data_path=path_to_dataset,
                     data_file=data_file,
                     train=is_train,
+                    label_colors=label_colors,
                     initial_size=self.img_size_orig,
                     model_input_size=self.img_size_target,
                     augmentations=augmentations
@@ -215,16 +222,16 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, save_path: str = None, device_ids: list = None,
-                  cudnn_bench: bool = False, path_to_weights: str = None, verbose: bool = False,
+    def get_model(self, model_name: str = None, path_to_weights: str = None, save_path: str = None,
+                  device_ids: list = None, cudnn_bench: bool = False,  verbose: bool = False,
                   model_parameters: dict = None, show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
+        :param path_to_weights: Path to the trained weights
         :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
-        :param path_to_weights: Path to the trained weights
         :param verbose: Flag to show info
         :param model_parameters: Path to the trained weights
         :param show_model: Flag to show model
@@ -266,6 +273,7 @@ class Pipeline(AbstractPipeline):
                 )
             cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
             model_parameters = cfg_parser.parameters['model_parameters']
+            model_name = cfg_parser.parameters['model_name']
 
             # Get path to saved model class
             model_class_path = os.path.join(path_to_model, 'model_class')
@@ -472,7 +480,6 @@ class Pipeline(AbstractPipeline):
             )
             losses = []
             for data in train_loader:
-
                 # Locate data on devices
                 inputs = model_utils.cuda(data[0], self.allocate_on)
                 with torch.no_grad():
@@ -839,12 +846,15 @@ class Pipeline(AbstractPipeline):
         return pred_df
 
     def evaluate_metrics(self, true_df: pd.DataFrame, pred_df: pd.DataFrame,
+                         ignore_class: int = None, label_colors: dict = None,
                          iou_thresholds: list = None, metric_names: list = None,
                          verbose: int = 1) -> dict:
         """ Common function to evaluate metrics
 
         :param true_df:
         :param pred_df:
+        :param ignore_class:
+        :param label_colors:
         :param iou_thresholds:
         :param metric_names:
         :param verbose:
@@ -877,12 +887,10 @@ class Pipeline(AbstractPipeline):
                             print(f'- best {m_k}: {m_v:.5f}')
 
             else:  # self.mode == 'multi'
-                # masks_p = np.moveaxis(masks_p, -1, 1)
                 out_metrics = dict()
-                colors = allowed_parameters.SEG_MULTI_COLORS  # HARDCODE
+                colors = label_colors
                 for i, (class_name, class_color) in enumerate(colors.items()):
-                    # TODO delete hardcode in colors and 11
-                    if i + 1 == 11:  # HARDCODE
+                    if i == ignore_class:
                         continue
                     class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
                     class_masks_p = masks_p[..., i + 1]

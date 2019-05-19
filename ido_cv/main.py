@@ -77,7 +77,6 @@ def main_pipe(args):
     path_to_train = os.path.join(args['data_path'], 'train')
     path_to_valid = os.path.join(args['data_path'], 'val')
     path_to_holdout = os.path.join(args['data_path'], 'holdout')
-    # path_to_holdout_labels = os.path.join(args['data_path'], 'holdout/masks')
     path_to_test = os.path.join(args['data_path'], 'test')
 
     scores = None
@@ -103,15 +102,15 @@ def main_pipe(args):
 
             print('-' * 30, ' TRAINING ', '-' * 30)
             model = train(
-                model=model, pipeline=pipe_class, train_data_path=path_to_train,
-                val_data_path=path_to_valid, model_save_dir=model_save_dir,
+                model=model, pipeline=pipe_class, model_save_dir=model_save_dir,
                 val_metrics=args['valid_metrics'], checkpoint_metric=args['checkpoint_metric'],
-                batch_size=args['batch_size'], first_step=args['first_step'],
-                best_measure=args['best_measure'], first_epoch=args['first_epoch'],
-                epochs=args['epochs'], n_best=args['n_best'], scheduler=args['scheduler'],
-                workers=args['workers'], shuffle_train=args['shuffle_train'],
-                augs=args['train_augs'], patience=args['patience'],
-                learning_rate=args['learning_rate']
+                train_data_path=path_to_train, val_data_path=path_to_valid,
+                label_colors=args['label_colors'], batch_size=args['batch_size'],
+                first_step=args['first_step'], best_measure=args['best_measure'],
+                first_epoch=args['first_epoch'], epochs=args['epochs'], n_best=args['n_best'],
+                scheduler=args['scheduler'], workers=args['workers'],
+                shuffle_train=args['shuffle_train'], augs=args['train_augs'],
+                patience=args['patience'], learning_rate=args['learning_rate']
             )
 
         # Validation (metrics evaluation) line

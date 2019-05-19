@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn import functional as F
 from ..nn_blocks.classic_unet_blocks import DecoderBlock
 from ..nn_blocks.classic_unet_blocks import DecoderBlockResidual
+from ..nn_blocks.classic_unet_blocks import ResidualBlock
 from ..nn_blocks.classic_unet_blocks import IdentityBlock
 from ..nn_blocks.encoders import EncoderCommon
 from ..nn_blocks.common_blocks import Conv
@@ -166,33 +167,29 @@ class UnetFactory(EncoderCommon):
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
             )
-            # self.hc_conv = Conv(
-            #     **hypercolumn_parameters
-            # )
             self.hc_conv = ConvBnRelu(
                 bn_type=self.bn_type,
                 **hypercolumn_parameters
             )
             self.hc_dropout = nn.Dropout2d(p=0.5)
 
-        final_decoder_parameters = dict(
-            out_channels=self.num_filters,
-            kernel_size=3,
-            padding=1,
-            depthwise=self.depthwise,
-            bn_type=self.bn_type,
-            conv_type=self.conv_type
-        )
         self.final_decoder_layer = nn.Sequential(
             OrderedDict(
                 [
-                    ("final_dec_conv_1", ConvBnRelu(
+                    ("final_conv_block", Conv(
                         in_channels=self.decoder_filters[1],
-                        **final_decoder_parameters
+                        out_channels=self.num_filters,
+                        kernel_size=1,
+                        depthwise=self.depthwise,
+                        conv_type=self.conv_type
                     )),
-                    ("final_dec_conv_2", ConvBnRelu(
+                    ("final_res_block", ResidualBlock(
                         in_channels=self.num_filters,
-                        **final_decoder_parameters
+                        out_channels=self.num_filters,
+                        depthwise=self.depthwise,
+                        bn_type=self.bn_type,
+                        conv_type=self.conv_type,
+                        add_se=self.se_decoder
                     ))
                 ]
             )
@@ -315,12 +312,12 @@ class UnetFactory(EncoderCommon):
                 conv_type=self.conv_type
             )
             hc_layers.append(
-                Conv(
-                    **hc_parameters
-                # )
-                # ConvBnRelu(
-                #     bn_type=self.bn_type,
+                # Conv(
                 #     **hc_parameters
+                # )
+                ConvBnRelu(
+                    bn_type=self.bn_type,
+                    **hc_parameters
                 )
             )
         return hc_layers

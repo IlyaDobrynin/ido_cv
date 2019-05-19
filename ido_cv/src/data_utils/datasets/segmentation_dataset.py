@@ -8,13 +8,15 @@ import cv2
 import numpy as np
 import torch
 from albumentations.torch.functional import img_to_tensor
+from albumentations import Compose
+from albumentations import Resize
 from torch.utils.data import Dataset
 
-from ... import allowed_parameters
 from ...utils.image_utils import pad
 from ...utils.image_utils import resize
 from ...utils.image_utils import resize_image
 from ...utils.image_utils import draw_images
+from ...utils.image_utils import convert_multilabel_mask
 
 
 def add_depth_channels(image_tensor):
@@ -29,8 +31,9 @@ class BinSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, train, initial_size, model_input_size, add_depth=False, data_path=None,
-                 data_file=None, augmentations=None, show_sample=False):
+    def __init__(self, initial_size: tuple, model_input_size: int, train: bool,
+                 add_depth: bool = False, data_path: str = None, data_file: np.ndarray = None,
+                 augmentations=None, show_sample: bool = True, **kwargs):
 
         self.train = train
         self.show_sample = show_sample
@@ -160,8 +163,9 @@ class MultSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, train, initial_size, model_input_size, add_depth=False, data_path=None,
-                 data_file=None, augmentations=None, show_sample=False):
+    def __init__(self, initial_size: tuple, model_input_size: int, train: bool,
+                 add_depth: bool = False, data_path: str = None, data_file: np.ndarray = None,
+                 augmentations=None, show_sample: bool = False, **kwargs):
 
         self.train = train
         self.show_sample = show_sample
@@ -180,39 +184,46 @@ class MultSegDataset(Dataset):
         else:
             self.model_input_size = model_input_size
         
-        self.colors = allowed_parameters.SEG_MULTI_COLORS
+        self.colors = kwargs['label_colors']
         self.augmentations = augmentations
         self.add_depth = add_depth
     
     def __len__(self):
         return len(self.file_names)
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         fname = self.file_names[idx]
         if self.from_path:
             image = cv2.imread(os.path.join(self.data_path, fr'images/{fname}'))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         else:
             image = self.data_file[self.data_file['names'] == fname]['images'].values[0]
-        # image = resize_image(image=image, size=self.initial_size)
-
         if self.train:
             if self.from_path:
                 mask = cv2.imread(os.path.join(self.data_path, f'masks/{fname}'))
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
             else:
                 mask = self.data_file[self.data_file['names'] == fname]['masks'].values[0]
-            # mask = resize_image(image=mask, size=self.initial_size, interpolation=cv2.INTER_NEAREST)
             return self._get_trainset(image, mask, fname)
         else:
             return self._get_testset(image, fname)
     
-    def _get_trainset(self, image, mask, name):
-        image = pad(image, mode='edge')
-        image = resize(image, size=self.model_input_size)
-        mask = pad(mask)
-        mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
-        mask = self.convert_multilabel_mask(mask, how='rgb2class', n_classes=11)
+    def _get_trainset(self, image: np.ndarray, mask: np.ndarray, name: str):
+        # ToDo remove hardcode
+        # image = pad(image, mode='reflect')
+        # image = resize(image, size=self.model_input_size)
+        # image = resize_image(image, size=self.model_input_size)
+        # # mask = pad(mask, mode='reflect')
+        # # mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
+        # mask = resize_image(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
+        mask = convert_multilabel_mask(mask, label_colors=self.colors, how='rgb2class')
+        data = {'image': image, 'mask': mask}
+        resized = Compose([
+            Resize(width=self.model_input_size, height=self.model_input_size)
+        ], p=1)(**data)
+        image, mask = resized['image'], resized['mask']
+
+        # mask = delete_small_instances(mask, obj_size=10)
         
         if self.augmentations:
             data = {'image': image, 'mask': mask}
@@ -230,7 +241,6 @@ class MultSegDataset(Dataset):
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             viz_mask = np.moveaxis(mask.data.numpy(), 0, -1)[:, :, 0]
-            print(str(name))
             draw_images([viz_image, viz_mask])
         
         return image, mask, str(name)
@@ -244,36 +254,6 @@ class MultSegDataset(Dataset):
             image = np.expand_dims(image, axis=-1)
         image = img_to_tensor(image)
         return image, str(name)
-
-    @staticmethod
-    def convert_multilabel_mask(mask, how='rgb2class', n_classes=2, threshold=0.99):
-        """ Function for multilabel mask convertation
-
-        :param mask:
-        :param how:
-        :return:
-        """
-        colors = allowed_parameters.SEG_MULTI_COLORS
-        if how == 'rgb2class':
-            out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1]), dtype=np.uint8)
-            for cls in range(n_classes):
-                if cls == 11:
-                    continue
-                matching = np.all(mask == colors[cls], axis=-1)
-                out_mask[matching] = cls + 1
-    
-        elif how == 'class2rgb':
-            out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-            for ch in range(mask.shape[-1]):
-                if ch == 0:
-                    continue
-                matching = (mask[:, :, ch] > threshold)
-                out_mask[matching, :] = colors[ch - 1]
-        else:
-            raise ValueError(
-                f"Wrong parameter how: {how}. Should be 'rgb2class or class2rgb."
-            )
-        return out_mask
     
     def collate_fn(self, batch):
         '''Pad images and encode targets.

@@ -52,6 +52,7 @@ def torch_metric_per_image(trues, preds, metric_name):
             metrics.append(0)
             continue
         if true.long().sum() == 0 and pred.long().sum() == 0:
+            metrics.append(1)
             continue
 
         union = (true | pred).long().sum()

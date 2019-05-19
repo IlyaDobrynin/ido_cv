@@ -10,10 +10,10 @@ from ..pipeline_class import Pipeline
 
 def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, checkpoint_metric: str,
           train_dataset_class=None, val_dataset_class=None, train_data_path: str = None,
-          val_data_path: str = None, batch_size: int = 1, first_step: int = 0,
-          best_measure: float = 0, first_epoch: int = 0, epochs: int = 1, n_best: int = 1,
-          scheduler: str = 'rop', workers: int = 1, shuffle_train: bool = False, augs: bool = False,
-          patience: int = 10, learning_rate: float = 0.0001) -> nn.Module:
+          val_data_path: str = None, label_colors: dict = None, batch_size: int = 1,
+          first_step: int = 0, best_measure: float = 0, first_epoch: int = 0, epochs: int = 1,
+          n_best: int = 1, scheduler: str = 'rop', workers: int = 1, shuffle_train: bool = False,
+          augs: bool = False, patience: int = 10, learning_rate: float = 0.0001) -> nn.Module:
     """ Training function
 
     :param model: Model class
@@ -44,6 +44,7 @@ def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, che
         path_to_dataset=train_data_path,
         batch_size=batch_size,
         is_train=True,
+        label_colors=label_colors,
         workers=workers,
         shuffle=shuffle_train,
         augs=augs
@@ -53,6 +54,7 @@ def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, che
         path_to_dataset=val_data_path,
         batch_size=batch_size,
         is_train=True,
+        label_colors=label_colors,
         workers=workers,
         shuffle=False,
         augs=False
