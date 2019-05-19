@@ -7,7 +7,9 @@
 import numpy as np
 import torch
 from ..metric_utils import numpy_metric
+from ..metric_utils import numpy_metric_per_image
 from ..metric_utils import torch_metric
+from ..metric_utils import torch_metric_per_image
 from ..metric_utils import calculate_confusion_matrix_from_arrays
 from ..metric_utils import get_metric_from_matrix
 
@@ -76,7 +78,7 @@ class SegmentationMetrics:
                            threshold: float) -> float:
         """ Metric for binary segmentation
 
-        :param metric_name: 
+        :param metric_name:
         :param threshold:
         :return:
         """
@@ -164,11 +166,13 @@ class SegmentationMetrics:
         preds = (preds > threshold).long()
 
         if device == 'cpu':
-            trues = trues.data.cpu().numpy()
-            preds = preds.data.cpu().numpy()
-            metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            trues = trues.data.cpu().numpy().astype(np.uint8)
+            preds = preds.data.cpu().numpy().astype(np.uint8)
+            # metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            metric = numpy_metric_per_image(trues=trues, preds=preds, metric_name=metric_name)
         elif device == 'gpu':
             metric = torch_metric(trues=trues, preds=preds, metric_name=metric_name)
+            # metric = torch_metric_per_image(trues=trues, preds=preds, metric_name=metric_name)
         else:
             raise ValueError(
                 f'Wrong device parameter: {device}. Should be "cpu" or "gpu".'

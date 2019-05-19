@@ -5,18 +5,20 @@
 """
 import os
 import gc
+from torch import nn
 from ... import dirs
 from ..pipeline_class import Pipeline
 
 
-def prediction(model, pipeline: Pipeline, dataset_class=None, data_path: str = None,
-               batch_size: int = 1, workers: int = 1, threshold: float = None,
+def prediction(model: nn.Module, pipeline: Pipeline, dataset_class=None, data_path: str = None,
+               batch_size: int = 1, workers: int = 1, threshold: (list, float) = None,
                postprocess: bool = False, output_path: str = '', show_preds: bool = False,
                save_preds: bool = False, **kwargs):
     """ Inference process
 
     :param model: Model class
     :param pipeline: Pipeline class
+    :param dataset_class: Custom dataset class
     :param data_path: Path to images to predict
     :param batch_size: Size of the data minibatch
     :param workers: Number of subprocesses to use for data loading

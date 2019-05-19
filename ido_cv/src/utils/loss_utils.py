@@ -22,7 +22,7 @@ def dice_coef(preds, trues, weight=None):
     """
     eps = 1e-12
     if weight is not None:
-        w = torch.autograd.Variable(weight)
+        w = torch.Tensor(weight)
         intersection = (w * preds * trues).sum()
         union = (w * preds).sum() + (w * trues).sum()
     else:
@@ -42,7 +42,7 @@ def jaccard_coef(preds, trues, weight=None):
     """
     eps = 1e-12
     if weight is not None:
-        w = torch.autograd.Variable(weight)
+        w = torch.Tensor(weight)
         intersection = (w * preds * trues).sum()
         union = (w * preds).sum() + (w * trues).sum()
     else:

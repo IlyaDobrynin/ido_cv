@@ -322,7 +322,7 @@ def get_true_classification(labels_path: str) -> pd.DataFrame:
     :return:
     """
     if os.path.exists(labels_path):
-        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path, 'labels.csv'), sep=';')
+        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path), sep=';')
     else:
         raise ValueError(
             f"Labels path {labels_path} does not exists."
@@ -330,7 +330,7 @@ def get_true_classification(labels_path: str) -> pd.DataFrame:
     return true_df
 
 
-def get_true_segmentation(labels_path: str, mode: str) -> pd.DataFrame:
+def get_true_segmentation(labels_path: str, mode: str, size: (tuple, int)) -> pd.DataFrame:
     """ Function makes dataframe with true labels for segmentation task
 
     :param labels_path: path to the classification labels
@@ -358,6 +358,15 @@ def get_true_segmentation(labels_path: str, mode: str) -> pd.DataFrame:
             for mask_name in mask_names:
                 mask = cv2.imread(filename=os.path.join(labels_path, mask_name))
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+
+                # ToDo: remove hardcode
+                from .image_utils import pad, resize
+                # mask = resize_image(mask, size=size, interpolation=cv2.INTER_NEAREST)
+                mask = pad(mask)
+                mask = resize(mask, size=size, interpolation=cv2.INTER_NEAREST)
+                # from .image_utils import draw_images
+                # draw_images([mask])
+
                 true_masks.append(mask)
             true_df['names'] = mask_names
             true_df['masks'] = true_masks

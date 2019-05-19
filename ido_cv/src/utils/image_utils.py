@@ -21,12 +21,15 @@ def pad(img, boxes=None, mode='constant'):
     :return:
     """
     # TODO make pad universal
-    img_largest_size = img.shape[1]
-    img_shortest_size = img.shape[0]
-    top_add = int(np.floor((img_largest_size-img_shortest_size)/2))
-    bot_add = int(np.ceil((img_largest_size-img_shortest_size)/2))
-    pad_width = ((top_add, bot_add), (0, 0))
-    
+    max_idx = np.argmax(img.shape[:2])
+    min_idx = np.argmin(img.shape[:2])
+    img_largest_size = img.shape[max_idx]
+    img_shortest_size = img.shape[min_idx]
+    t_l_add = int(np.floor((img_largest_size-img_shortest_size)/2))
+    b_r_add = int(np.ceil((img_largest_size-img_shortest_size)/2))
+
+    pad_width = ((t_l_add, b_r_add), (0, 0)) if max_idx == 1 else ((0, 0), (t_l_add, b_r_add))
+
     if len(img.shape) == 3:
         out_image = np.ndarray(shape=(img_largest_size, img_largest_size, img.shape[2]),
                                dtype=np.uint8)
@@ -39,7 +42,7 @@ def pad(img, boxes=None, mode='constant'):
         raise ValueError(f'Wrong shape of image: {img.shape}')
     
     if boxes is not None:
-        boxes = boxes + torch.Tensor([0, top_add, 0, top_add])
+        boxes = (boxes + torch.Tensor([0, t_l_add, 0, t_l_add]))
         return out_image, boxes
     return out_image
 
@@ -105,7 +108,7 @@ def resize(img, boxes=None, size=256, max_size=10000, interpolation=cv2.INTER_AR
     return out_image
 
 
-def resize_image(image: np.ndarray, size: (int, tuple), interpolation=cv2.INTER_AREA):
+def resize_image(image: np.ndarray, size: (int, tuple), interpolation=cv2.INTER_LINEAR):
     """ Function resize given image to the size
 
     :param image: input image
@@ -249,30 +252,49 @@ def draw_images(images_list: list, orient: str = 'horizontal'):
         ax.imshow(image)
     plt.show()
 
+def draw_image_boxes(image, boxes, labels, scores):
+    draw = image.copy()
+    print("-"*30, "\n")
+    preds = [(box, label, score) for box, label, score in zip(boxes, labels, scores)]
+    # preds = sorted(preds, key=lambda x: x[0][0])
+    # print(preds)
+    for pred in preds:
+        box = pred[0]
+        label = pred[1]
+        score = pred[2]
+        draw = cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 1)
+        plt.annotate(label, xy=(box[0], box[1]), color='green')
+        plt.annotate('{:.2f}'.format(score), xy=(box[0], box[3]+10), color='green')
+        print(box, label, score)
+    plt.imshow(draw)
+    plt.show()
 
-def convert_multilabel_mask(mask: np.ndarray, colors: dict, how: str = 'rgb2class',
+
+def convert_multilabel_mask(mask: np.ndarray, label_colors: dict, how: str = 'rgb2class',
                             ignore_class: int = None) -> np.ndarray:
     """ Function for multilabel mask convertation
 
     :param mask: Numpy ndarray of mask
-    :param colors: Dictionary with colors encodings
+    :param label_colors: Dictionary with colors encodings
     :param how: 'rgb2class' or 'class2rgb'
     :param ignore_class: Class to ignore
     :return:
     """
-    n_classes = len(colors.keys())
+    n_classes = len(label_colors.keys())
     if how == 'rgb2class':
         out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1]), dtype=np.uint8)
-        for cls in range(n_classes):
-            if cls == ignore_class:
+        for i, cls in enumerate(label_colors.keys()):
+            if i == ignore_class:
                 continue
-            matching = np.all(mask == colors[cls], axis=-1)
-            out_mask[matching] = cls + 1
+            matching = np.all(mask == label_colors[cls], axis=-1)
+            out_mask[matching] = i
     elif how == 'class2rgb':
         out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-        for cls in range(1, n_classes):
+        for cls in range(0, n_classes):
+            if cls == ignore_class:
+                continue
             matching = mask[:, :] == cls
-            out_mask[matching, :] = colors[cls - 1]
+            out_mask[matching, :] = label_colors[cls - 1]
     else:
         raise ValueError(
             f"Wrong parameter how: {how}. Should be 'rgb2class or class2rgb."

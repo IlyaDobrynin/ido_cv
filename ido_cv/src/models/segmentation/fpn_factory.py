@@ -244,7 +244,7 @@ class FPNFactory(EncoderCommon):
         :return Output Tensor
         """
         h, w = x.size()[2], x.size()[3]
-        _, encoder_list = self._make_encoder_forward(x)
+        encoder_list = self._make_encoder_forward(x)
         final_conv_list = self._make_decoder_forward(encoder_list)
         x = torch.cat(final_conv_list, dim=1)
         x = F.interpolate(x, size=(h, w), mode=self.up_mode)

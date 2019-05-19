@@ -10,16 +10,18 @@ from ..pipeline_class import Pipeline
 
 def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, checkpoint_metric: str,
           train_dataset_class=None, val_dataset_class=None, train_data_path: str = None,
-          val_data_path: str = None, batch_size: int = 1, first_step: int = 0,
-          best_measure: float = 0, first_epoch: int = 0, epochs: int = 1, n_best: int = 1,
-          scheduler: str = 'rop', workers: int = 1, shuffle_train: bool = False, augs: bool = False,
-          patience: int = 10, learning_rate: float = 0.0001) -> nn.Module:
+          val_data_path: str = None, label_colors: dict = None, batch_size: int = 1,
+          first_step: int = 0, best_measure: float = 0, first_epoch: int = 0, epochs: int = 1,
+          n_best: int = 1, scheduler: str = 'rop', workers: int = 1, shuffle_train: bool = False,
+          augs: bool = False, patience: int = 10, learning_rate: float = 0.0001) -> nn.Module:
     """ Training function
 
     :param model: Model class
     :param pipeline: Pipeline class
     :param train_data_path: Path to train images
     :param val_data_path: Path to validation images
+    :param train_dataset_class: Dataset class for training data
+    :param val_dataset_class: Dataset class for validation data
     :param model_save_dir: Path to save model files
     :param val_metrics: List of validation metrics names
     :param checkpoint_metric: Name of the metric, which will be monitored for early stopping
@@ -42,6 +44,7 @@ def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, che
         path_to_dataset=train_data_path,
         batch_size=batch_size,
         is_train=True,
+        label_colors=label_colors,
         workers=workers,
         shuffle=shuffle_train,
         augs=augs
@@ -51,6 +54,7 @@ def train(model, pipeline: Pipeline, model_save_dir: str, val_metrics: list, che
         path_to_dataset=val_data_path,
         batch_size=batch_size,
         is_train=True,
+        label_colors=label_colors,
         workers=workers,
         shuffle=False,
         augs=False

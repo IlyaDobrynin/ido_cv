@@ -126,6 +126,22 @@ class MultiLovasz(nn.Module):
 
     def __call__(self, outputs, targets):
         outputs = F.softmax(outputs, dim=1)
+
+        # for i in range(outputs.shape[1]):
+        #     if i == self.ignore:
+        #         continue
+        #     metric_target_cls = (targets == i).float()
+        #     metric_output_cls = outputs[:, i, ...].unsqueeze(1)
+        #     from ..image_utils import draw_images
+        #     import numpy as np
+        #     target_img = metric_target_cls.data.cpu().numpy().astype(np.float32)
+        #     pred_img = metric_output_cls.data.cpu().numpy().astype(np.float32)
+        #     for img_idx in range(target_img.shape[0]):
+        #         gt = np.squeeze(target_img[img_idx, ...], axis=0)
+        #         pr = np.squeeze(pred_img[img_idx, ...], axis=0)
+        #         if np.sum(gt) != 0:
+        #             draw_images([gt, pr])
+
         loss = lovasz_softmax(probas=outputs, labels=targets, ignore=self.ignore)
         return loss
 
@@ -149,6 +165,18 @@ class MultiBceMetric(nn.Module):
                 continue
             metric_target_cls = (trues == i).float()
             metric_output_cls = metric_output[:, i, ...].unsqueeze(1)
+
+            # from ..image_utils import draw_images
+            # import numpy as np
+            # target_img = metric_target_cls.data.cpu().numpy().astype(np.float32)
+            # pred_img = metric_output_cls.data.cpu().numpy().astype(np.float32)
+            # for img_idx in range(target_img.shape[0]):
+            #     if i == 0:
+            #         continue
+            #     gt = np.squeeze(target_img[img_idx, ...], axis=0)
+            #     pr = np.squeeze(pred_img[img_idx, ...], axis=0)
+            #     if np.sum(gt) != 0:
+            #         draw_images([gt, pr])
 
             self.bce_loss = nn.BCEWithLogitsLoss()
             bce_loss = self.bce_loss(metric_output_cls, metric_target_cls)

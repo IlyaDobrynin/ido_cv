@@ -9,6 +9,7 @@ import sys
 import re
 import shutil
 import tempfile
+import pickle
 import hashlib
 import zipfile
 import json
@@ -30,7 +31,7 @@ def cuda(variable, allocate_on):
     :param variable: variable
     :return:
     """
-    return variable.cuda() if allocate_on != 'cpu' else variable.cpu() # async=True
+    return variable.cuda() if allocate_on != 'cpu' else variable.cpu()
 
 
 def remove_all_but_n_best(weights_dir, n_best=1, reverse=False):
@@ -90,7 +91,7 @@ def allocate_model(model, device_ids=None, show_info=False, cudnn_bench=False, d
     return model
 
 
-def save_model(model_dict, name, save_path):
+def save_model_class(model_class: nn.Module, save_path: str):
     """ Function for saving model parameters dictionary. Save it in the JSON file
 
     :param model_dict: Model parameters dictionary
@@ -98,10 +99,20 @@ def save_model(model_dict, name, save_path):
     :param save_path:
     :return:
     """
-    json_path = os.path.join(save_path, r'{}_parameters.json'.format(name))
-    with open(json_path, 'w') as file:
-        json.dump(obj=model_dict, fp=file)
-    return json_path
+    with open(save_path, "wb") as file:
+        pickle.dump(model_class, file)
+    return save_path
+
+
+def load_model_class(model_class_path: str):
+    """ Function unpickle model class
+
+    :param model_class_path: Path to model class
+    :return:
+    """
+    with open(model_class_path, "rb") as file:
+        unpickled = pickle.loads(file.read())
+    return unpickled
 
 
 def write_event(log, step, epoch, **data):

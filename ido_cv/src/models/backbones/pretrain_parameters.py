@@ -62,6 +62,14 @@ airnext_layers = [
         ['stage4']
     ]
 
+wrn_layers = [
+        ['init_block'],
+        ['stage1'],
+        ['stage2'],
+        ['stage3'],
+        ['stage4']
+    ]
+
 encoder_dict = {
     'resnet18': {
         'skip': resnet_layers,
@@ -212,5 +220,11 @@ encoder_dict = {
         'skip': airnext_layers,
         'filters': (64, 256, 512, 1024, 2048),
         'features': True
+    },
+    'wrn50_2': {
+        'skip': wrn_layers,
+        'filters': (64, 256, 512, 1024, 2048),
+        'features': True
     }
+
 }

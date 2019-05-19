@@ -3,6 +3,7 @@
      Script for validation process
 
 """
+import os
 import gc
 import numpy as np
 from ..pipeline_class import Pipeline
@@ -11,7 +12,7 @@ from ..utils.common_utils import get_true_segmentation
 from ..utils.common_utils import get_true_detection
 
 
-def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_metrics: list,
+def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
                batch_size: int = 1, workers: int = 1, save_preds: bool = False,
                output_path: str = '', **kwargs) -> dict:
     """ Validation process
@@ -61,6 +62,7 @@ def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_
 
     # Get score for detection
     if task == 'detection':
+        labels_path = os.path.join(data_path, 'labels.txt')
         true_df = get_true_detection(labels_path=labels_path)
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
@@ -72,7 +74,13 @@ def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_
 
     # Get score for segmentation
     elif task == 'segmentation':
-        true_df = get_true_segmentation(labels_path=labels_path, mode=mode)
+        labels_path = os.path.join(data_path, 'masks')
+        true_df = get_true_segmentation(
+            labels_path=labels_path,
+            mode=mode,
+            size=pipeline.img_size_target
+        )
+
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
@@ -81,13 +89,11 @@ def validation(model, pipeline: Pipeline, data_path: str, labels_path: str, val_
 
     # Get score for classification
     else:  # task == 'classification':
+        labels_path = os.path.join(data_path, 'labels.csv')
         true_df = get_true_classification(labels_path=labels_path)
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
             metric_names=val_metrics
         )
-        for k, v in scores.items():
-            print(f'{k} metric: {v}')
-
     return scores

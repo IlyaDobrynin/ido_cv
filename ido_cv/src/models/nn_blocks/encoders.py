@@ -32,14 +32,16 @@ class EncoderCommon(nn.Module):
             first_enc_layer = nn.Sequential(
                 OrderedDict(
                     [
-                        ("first_enc_conv_bn_relu", ConvBnRelu(in_channels=self.num_input_channels,
-                                                              out_channels=self.encoder_filters[0],
-                                                              kernel_size=3,
-                                                              padding=1,
-                                                              stride=2,
-                                                              depthwise=self.depthwise,
-                                                              bn_type=self.bn_type,
-                                                              conv_type=self.conv_type))
+                        ("first_enc_conv_bn_relu", ConvBnRelu(
+                            in_channels=self.num_input_channels,
+                            out_channels=self.encoder_filters[0],
+                            kernel_size=3,
+                            padding=1,
+                            stride=2,
+                            depthwise=self.depthwise,
+                            bn_type=self.bn_type,
+                            conv_type=self.conv_type
+                        ))
                     ]
                 )
             )
@@ -128,8 +130,8 @@ class EncoderCommon(nn.Module):
         else:
             for encoder_layer in self.encoder_layers:
                 x = encoder_layer(x)
-                encoder_list.append(x.clone())
-        return x, encoder_list
+                encoder_list.append(x)
+        return encoder_list
     
     def forward(self, x):
         raise NotImplementedError

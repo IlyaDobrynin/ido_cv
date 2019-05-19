@@ -6,45 +6,51 @@ Module implements base class for classification pipeline
 import os
 import gc
 import copy
+import warnings
 from pathlib import Path
 from abc import ABC, abstractmethod
 import cv2
 import numpy as np
 import pandas as pd
-from skimage.io import imsave
 import matplotlib.pyplot as plt
+from skimage.io import imsave
+
 import torch
 import torch.optim as optimizers
+from torch import nn
+from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 from tqdm import tqdm
 
 from .. import dirs
-from .utils.get_model_config import ConfigParser
 from . import allowed_parameters
-from .data_utils.datasets.detection_dataset import RetinaDataset
+
+from .models.models_facade import ModelsFacade
+from .data_utils.dataset_facade import DatasetFacade
+from .utils.loss.loss_facade import LossesFacade
+from .utils.metrics.metric_facade import MetricsFacade
+
 from .data_utils.encoder_alt import DataEncoder
-from .data_utils.datasets.segmentation_dataset import BinSegDataset
-from .data_utils.datasets.segmentation_dataset import MultSegDataset
-from .data_utils.datasets.classification_dataset import ClassifyDataset
 from .data_utils.data_augmentations import Augmentations
 
+from .utils.get_model_config import ConfigParser
 from .utils import model_utils
 from .utils.image_utils import unpad_bboxes
 from .utils.image_utils import resize_bboxes
-from .utils.image_utils import unpad
-from .utils.image_utils import resize
 from .utils.image_utils import draw_images
+from .utils.image_utils import draw_image_boxes
 from .utils.image_utils import delete_small_instances
 from .utils.metric_utils import get_opt_threshold
 from .utils.metrics.detection_metrics import mean_ap
-from .utils.model_utils import write_event
 
 pd.set_option('display.max_columns', 10)
 
-MODELS = allowed_parameters.MODELS
-METRICS = allowed_parameters.METRICS
-LOSSES = allowed_parameters.LOSSES
+TASKS_MODES = allowed_parameters.TASKS_MODES
+METRIC_PARAMETERS = allowed_parameters.METRIC_PARAMETERS
+MODEL_PARAMETERS = allowed_parameters.MODEL_PARAMETERS
+LOSS_PARAMETERS = allowed_parameters.LOSS_PARAMETERS
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
 
 
@@ -78,46 +84,49 @@ class Pipeline(AbstractPipeline):
     """
     Class implements basic logic of detection pipeline
     Arguments:
-        model_name (str): name of the model
-        criterion (method): training loss function to minimize
-        optim_name (str): name of the model optimizer:
-                                'adam'
-                                'SGD'
-        allocate_on (str): Device for locating model
-        img_size_orig (int, tuple): original size of input images
-        img_size_target (int): target size of input images
-        random_seed (int): random seed
-        time (date): current time
+        task:               Task for pipeline:
+                                - classification
+                                - segmentation
+                                - detection
+        mode:               Mode for given task. Depends on given task.
+        loss_name:          Loss name. Depends on given task.
+        optim_name:         Name of the model optimizer:
+                                - 'adam'
+                                - 'sgd'
+        time:               Current time.
+        allocate_on:        Device(s) for locating model
+        tta_list:           List of test-time augmentations.
+                            Currently implemented only for binary segmentation.
+        random_seed:        Random seed for fixating model random state.
+        img_size_orig:      Original size of input images (
+        img_size_target:    Size of input images for the model input
+
+
     """
 
-    def __init__(self, task, mode, loss_name=None, optim_name=None, allocate_on='cpu', tta_list=None,
-                 img_size_orig=None, img_size_target=None, random_seed=1, time=None):
+    def __init__(self, task: str, mode: str, loss_name: str = None, optim_name: str = None,
+                 time: str = None, allocate_on: str = 'cpu', tta_list: list = None,
+                 random_seed: int = 1, img_size_orig: (int, tuple) = None,
+                 img_size_target: (int, tuple) = None):
 
         super(Pipeline, self).__init__()
 
-        if task in ['segmentation', 'classification']:
-            if mode in ['binary', 'multi']:
-                self.task = task
-                self.mode = mode
-            else:
-                raise ValueError(
-                    f'Wrong mode parameter: {mode}.'
-                    'Should be "binary" or "multi".'
-                )
-        elif task == 'detection':
-            if mode == 'all':
-                self.task = task
-                self.mode = mode
-            else:
-                raise ValueError(
-                    f'Wrong mode parameter: {mode}.'
-                    'Should be "all" for detection task.'
-                )
-        else:
+        tasks = TASKS_MODES.keys()
+        if task not in tasks:
             raise ValueError(
                 f'Wrong task parameter: {task}. '
-                'Should be "segmentation_b", "segmentation_m", "detection", "classification"'
+                f'Should be {tasks}.'
             )
+
+        modes = TASKS_MODES[task].keys()
+        if mode not in modes:
+            raise ValueError(
+                f'Wrong mode parameter: {mode}. '
+                f'Should be {modes}.'
+            )
+
+        self.task = task
+        self.mode = mode
 
         if allocate_on in ['cpu', 'gpu']:
             self.allocate_on = allocate_on
@@ -131,7 +140,14 @@ class Pipeline(AbstractPipeline):
 
         # Get loss for training
         if loss_name is not None:
-            self.criterion = LOSSES[self.task][self.mode][loss_name]
+            loss_facade = LossesFacade(self.task, self.mode, loss_name)
+            loss_parameters = LOSS_PARAMETERS[self.task][self.mode][loss_name]
+            self.criterion = loss_facade.get_loss(**loss_parameters)
+
+        # Get metrics for training
+        metric_facade = MetricsFacade(task=self.task)
+        metric_parameters = METRIC_PARAMETERS[self.task][self.mode]
+        self.val_metric_class = metric_facade.get_metric(mode=self.mode, **metric_parameters)
 
         # Get optimizer
         if optim_name is not None:
@@ -142,63 +158,62 @@ class Pipeline(AbstractPipeline):
         self.random_seed = random_seed
         self.time = time
 
-    def get_dataloaders(self, dataset_class=None, path_to_dataset=None, data_file=None,
-                        batch_size=1, is_train=True, workers=1, shuffle=False, augs=False):
+    def get_dataloaders(self, dataset_class: Dataset = None, path_to_dataset: str = None,
+                        data_file: np.ndarray = None, batch_size: int = 1, is_train: bool = True,
+                        label_colors: dict = None, workers: int = 1, shuffle: bool = False,
+                        augs: bool = False) -> DataLoader:
         """ Function to make train data loaders
 
-        :param dataset_class: Dataset class
+        :param dataset_class:   Dataset class
         :param path_to_dataset: Path to the images
-        :param data_file: Data file
-        :param batch_size: Size of data minibatch
-        :param is_train: Flag to specify dataloader type (train or test)
-        :param workers: Number of multithread workers
-        :param shuffle: Flag for random shuffling train dataloader samples
-        :param augs: Flag to add augmentations
+        :param data_file:       Data file
+        :param batch_size:      Size of data minibatch
+        :param is_train:        Flag to specify dataloader type (train or test)
+        :param label_colors:    Colors for labeling for multiclass segmentation
+        :param workers:         Number of multithread workers
+        :param shuffle:         Flag for random shuffling train dataloader samples
+        :param augs:            Flag to add augmentations
         :return:
         """
+
+        if (dataset_class is None) and (path_to_dataset is None) and (data_file is None):
+            raise ValueError(
+                f"At list one from dataset_class path_to_dataset or data_file parameters "
+                f"should be filled!"
+            )
+        if (self.task == 'segmentation') and (label_colors is None):
+            raise ValueError(
+                f"Provide label_colors for multiclass segmentation task!"
+            )
+
         if augs:
             augmentations = Augmentations(is_train).transform
         else:
             augmentations = None
+
         if dataset_class is None:
+            # ToDo: make input parameters for dataset universal
             if self.task == 'detection':
-                dataset_class = RetinaDataset(root=path_to_dataset,
-                                              labels_file=os.path.join(path_to_dataset, 'labels.csv'),
-                                              initial_size=self.img_size_orig,
-                                              model_input_size=self.img_size_target,
-                                              train=is_train,
-                                              augmentations=augmentations)
-                # dataset_class = None
-            elif self.task == 'segmentation':
-                if self.mode == 'binary':
-                    dataset_class = BinSegDataset(
-                        data_path=path_to_dataset,
-                        data_file=data_file,
-                        train=is_train,
-                        initial_size=self.img_size_orig,
-                        model_input_size=self.img_size_target,
-                        add_depth=False,
-                        augmentations=augmentations
-                    )
-                else:  # self.mode == 'multi':
-                    dataset_class = MultSegDataset(
-                        data_path=path_to_dataset,
-                        data_file=data_file,
-                        train=is_train,
-                        initial_size=self.img_size_orig,
-                        model_input_size=self.img_size_target,
-                        add_depth=False,
-                        augmentations=augmentations
-                    )
-            else:  # self.task == 'classification'
-                dataset_class = ClassifyDataset(
+                dataset_parameters = dict(
+                    root=path_to_dataset,
+                    labels_file=os.path.join(path_to_dataset, 'labels.csv'),
+                    initial_size=self.img_size_orig,
+                    model_input_size=self.img_size_target,
+                    train=is_train,
+                    augmentations=augmentations
+                )
+            else:
+                dataset_parameters = dict(
                     data_path=path_to_dataset,
                     data_file=data_file,
                     train=is_train,
+                    label_colors=label_colors,
                     initial_size=self.img_size_orig,
                     model_input_size=self.img_size_target,
                     augmentations=augmentations
                 )
+            facade_class = DatasetFacade(task=self.task, mode=self.mode)
+            dataset_class = facade_class.get_dataset_class(**dataset_parameters)
 
         dataloader = DataLoader(dataset_class,
                                 batch_size=batch_size,
@@ -207,47 +222,21 @@ class Pipeline(AbstractPipeline):
                                 collate_fn=dataset_class.collate_fn)
         return dataloader
 
-    def get_model(self, model_name: str, device_ids: list=None, cudnn_bench: bool=False,
-                  path_to_weights: str=None, model_parameters: dict=None,
-                  show_model: bool = False) -> tuple:
+    def get_model(self, model_name: str = None, path_to_weights: str = None, save_path: str = None,
+                  device_ids: list = None, cudnn_bench: bool = False,  verbose: bool = False,
+                  model_parameters: dict = None, show_model: bool = False) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
+        :param path_to_weights: Path to the trained weights
+        :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
-        :param path_to_weights: Path to the trained weights
+        :param verbose: Flag to show info
         :param model_parameters: Path to the trained weights
         :param show_model: Flag to show model
         :return:
         """
-        # Get model parameters
-        if path_to_weights is None:
-            if model_parameters is None:
-                model_parameters = MODELS[self.task][self.mode][model_name]['default_parameters']
-                print(
-                    f'Pretrained weights are not provided. '
-                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
-                )
-        else:
-            path_to_model = Path(path_to_weights).parents[1]
-            cfg_path = os.path.join(path_to_model, 'hyperparameters.yml')
-            if not os.path.exists(cfg_path):
-                raise ValueError(
-                    f"Path {cfg_path} does not exists."
-                )
-            cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
-            model_parameters = cfg_parser.parameters['model_parameters']
-
-        print(
-            f'Train process runs with {model_name} parameters: \n{model_parameters}'
-        )
-
-        # Get model class
-        model_class = MODELS[self.task][self.mode][model_name]['class']
-        model = model_class(**model_parameters)
-
-        # Locate model into device
-        model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
 
         # Make initial model parameters for training
         initial_parameters = dict(
@@ -256,46 +245,96 @@ class Pipeline(AbstractPipeline):
             best_measure=0
         )
 
-        # Load model weights
-        if path_to_weights is not None:
-            if os.path.exists(path_to_weights):
-                if self.allocate_on == 'cpu':
-                    state = torch.load(str(path_to_weights), map_location={'cuda:0': 'cpu',
-                                                                           'cuda:1': 'cpu'})
-                    model_state = {key.replace('module.', ''): value for key, value in
-                                   state['model'].items()}
-                else:
-                    state = torch.load(str(path_to_weights))
-                    model_state = state['model']
+        # Get model parameters
+        if path_to_weights is None:
+            if model_parameters is None:
+                model_parameters = MODEL_PARAMETERS[self.task][self.mode][model_name]
+                print(
+                    f'Pretrained weights are not provided. '
+                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
+                )
 
-                model.load_state_dict(model_state)
+            # Get model class
+            facade = ModelsFacade(task=self.task, model_name=model_name)
+            model = facade.get_model(**model_parameters)
+        else:
 
-                initial_parameters['epoch'] = state['epoch']
-                initial_parameters['step'] = state['epoch']
-                initial_parameters['best_measure'] = state['best_measure']
-
-                # return model, initial_parameters
-            else:
+            if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
-        if show_model:
-            from torchsummary import summary
-            summary(model, input_size=(3, self.img_size_target, self.img_size_target))
+            # Load model class and weights
+            path_to_model = Path(path_to_weights).parents[1]
+
+            # Get saved configs
+            cfg_path = os.path.join(path_to_model, 'hyperparameters.yml')
+            if not os.path.exists(cfg_path):
+                raise ValueError(
+                    f"Path {cfg_path} does not exists."
+                )
+            cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
+            model_parameters = cfg_parser.parameters['model_parameters']
+            model_name = cfg_parser.parameters['model_name']
+
+            # Get path to saved model class
+            model_class_path = os.path.join(path_to_model, 'model_class')
+
+            if self.allocate_on == 'cpu':
+                device = torch.device('cpu')
+                model = torch.load(str(model_class_path), map_location=device)
+                model_dict = torch.load(str(path_to_weights), map_location=device)
+
+                model_weights = {key.replace('module.', ''): value
+                                 for key, value in model_dict['model_weights'].items()
+                                 if 'module' in key}
+            else:
+                model = torch.load(str(model_class_path))
+                model_dict = torch.load(str(path_to_weights))
+                model_weights = {key.replace('module.', ''): value
+                                 for key, value in model_dict['model_weights'].items()
+                                 if 'module' in key}
+
+            model.load_state_dict(model_weights)
+            initial_parameters['epoch'] = model_dict['epoch']
+            initial_parameters['step'] = model_dict['step']
+            initial_parameters['best_measure'] = model_dict['best_measure']
+
+        if save_path is not None:
+            torch.save(model, os.path.join(save_path, 'model_class'))
+        else:
+            msg = "Model class will not save"
+            warnings.warn(msg, Warning)
+
+        # Locate model into device
+        model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
+
+        if verbose:
+            print(f'Train process runs with {model_name} parameters:')
+            for param_name, param_val in model_parameters.items():
+                print(f'{param_name}: {param_val}')
+            if show_model:
+                from torchsummary import summary
+                summary_device = 'cpu' if self.allocate_on == 'cpu' else 'cuda'
+                summary(
+                    model=model,
+                    input_size=(3, self.img_size_target, self.img_size_target),
+                    device=summary_device
+                )
 
         return model, initial_parameters, model_parameters
 
-    def find_lr(self, model, dataloader, lr_reduce_factor=1, verbose=1, show_graph=True,
-                init_value=1e-8, final_value=10., beta=0.98):
+    def find_lr(self, model: nn.Module, dataloader: DataLoader, lr_reduce_factor: int = 1,
+                verbose: int = 1, show_graph: bool = True, init_value: float = 1e-8,
+                final_value: float = 10., beta: float = 0.98) -> float:
         """ Function find optimal learning rate for the given model and parameters
 
-        :param model: Input model
-        :param dataloader: Input data loader
-        :param lr_reduce_factor: Factor to
-        :param verbose: Flag to show output information
-        :param show_graph: Flag to showing graphic
-        :param init_value: Start LR
-        :param final_value: Max stop LR
-        :param beta: Smooth value
+        :param model:               Input model
+        :param dataloader:          Input data loader
+        :param lr_reduce_factor:    Factor to
+        :param verbose:             Flag to show output information
+        :param show_graph:          Flag to showing graphic
+        :param init_value:          Start LR
+        :param final_value:         Max stop LR
+        :param beta: Smooth         value
         :return:
         """
         # Get optimizer
@@ -372,50 +411,46 @@ class Pipeline(AbstractPipeline):
         opt_lr = min_lr / lr_reduce_factor
         if verbose == 1:
             print(f'Current learning rate: {opt_lr:.10f}')
-
-        # Show graph if necessary
-        if show_graph:
-            m = -5
-            plt.plot(list(lr_dict.keys())[10:m], list(lr_dict.values())[10:m])
-            plt.show()
+            # Show graph if necessary
+            if show_graph:
+                m = -5
+                plt.plot(list(lr_dict.keys())[10:m], list(lr_dict.values())[10:m])
+                plt.show()
         return opt_lr
 
-    def train(self, model, lr, train_loader, val_loader, metric_names, best_measure, first_step=0,
-              first_epoch=0, chp_metric='loss', n_epochs=1, n_best=1, scheduler='rop', patience=10,
-              save_dir=''):
+    def train(self, model: nn.Module, lr: float, train_loader: DataLoader, val_loader: DataLoader,
+              metric_names: list, best_measure: float, first_step: int = 0, first_epoch: int = 0,
+              chp_metric: str = 'loss', n_epochs: int = 1, n_best: int = 1, scheduler: str = 'rop',
+              patience: int = 10, save_dir: str = '') -> nn.Module:
         """ Training pipeline function
 
-        :param model: Input model
-        :param lr: Initial learning rate
-        :param train_loader: Train dataloader
-        :param val_loader: Validation dataloader
-        :param metric_names: Metrics to print (available are 'dice', 'jaccard', 'm_iou')
-        :param best_measure: Best value of the used criterion
-        :param first_step: Initial step (number of batch)
-        :param first_epoch: Initial epoch
-        :param chp_metric: Criterion to save best weights ('loss' or one of metrics)
-        :param n_epochs: Overall amount of epochs to learn
-        :param n_best: Amount of best-scored weights to save
-        :param scheduler: Name of the lr scheduler policy:
-                            - rop for ReduceOnPlateau policy
-                            - None for ni policy
-        :param patience: Amount of epochs to stop training if loss doesn't improve
-        :param save_dir: Path to save training model weights
-        :return: Trained model
+        :param model:           Input model
+        :param lr:              Initial learning rate
+        :param train_loader:    Train dataloader
+        :param val_loader:      Validation dataloader
+        :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param best_measure:    Best value of the used criterion
+        :param first_step:      Initial step (number of batch)
+        :param first_epoch:     Initial epoch
+        :param chp_metric:      Criterion to save best weights ('loss' or one of metrics)
+        :param n_epochs:        Overall amount of epochs to learn
+        :param n_best:          Amount of best-scored weights to save
+        :param scheduler:       Name of the lr scheduler policy:
+                                    - rop for ReduceOnPlateau policy
+                                    - None for ni policy
+        :param patience:        Amount of epochs to stop training if loss doesn't improve
+        :param save_dir:        Path to save training model weights
+        :return:                Trained model
         """
 
         # Get optimizer
+        # ToDo: make optimizer in the get_model method
         optimizer_dict = dict(
             adam=optimizers.Adam(model.parameters(), lr=lr, weight_decay=0.00001),
             rmsprop=optimizers.RMSprop(model.parameters(), lr=lr),
             sgd=optimizers.SGD(model.parameters(), lr=lr, nesterov=True, momentum=0.9)
         )
         optimizer = optimizer_dict[self.optim_name]
-
-        # Get metric functions
-        # metrics = dict()
-        # for m_name in metric_names:
-        #     metrics[m_name] = METRICS[self.task][self.mode][m_name]
 
         # Get learning rate scheduler policy
         if scheduler == 'rop':
@@ -433,10 +468,6 @@ class Pipeline(AbstractPipeline):
 
         # Make dir for weights save
         save_weights_path = dirs.make_dir(relative_path='weights', top_dir=save_dir)
-
-        best_weights_name = os.path.join(
-                    save_weights_path, f'epoch-{first_epoch}_{chp_metric}-{best_measure:.5f}.pth'
-                )
         best_model_wts = copy.deepcopy(model.state_dict())
         
         # Main training loop
@@ -449,7 +480,6 @@ class Pipeline(AbstractPipeline):
             )
             losses = []
             for data in train_loader:
-
                 # Locate data on devices
                 inputs = model_utils.cuda(data[0], self.allocate_on)
                 with torch.no_grad():
@@ -492,7 +522,7 @@ class Pipeline(AbstractPipeline):
             )
 
             # Write epoch parameters to log file
-            write_event(log_file, first_step, e, **val_metrics)
+            model_utils.write_event(log_file, first_step, e, **val_metrics)
             val_loss = val_metrics['loss']
 
             # Make scheduler step
@@ -519,7 +549,7 @@ class Pipeline(AbstractPipeline):
                 )
                 best_model_wts = copy.deepcopy(model.state_dict())
                 state_dict = dict(
-                    model=best_model_wts,
+                    model_weights=best_model_wts,
                     epoch=e,
                     step=first_step,
                     best_measure=best_measure
@@ -534,23 +564,24 @@ class Pipeline(AbstractPipeline):
 
         # Remove all weights but n best
         reverse = True if chp_metric in ['loss'] else False
-        model_utils.remove_all_but_n_best(weights_dir=save_weights_path,
-                                          n_best=n_best,
-                                          reverse=reverse)
+        model_utils.remove_all_but_n_best(
+            weights_dir=save_weights_path, n_best=n_best, reverse=reverse
+        )
 
         # Load best model weights
         model.load_state_dict(best_model_wts)
 
         return model
 
-    def validation(self, model, dataloader, metric_names, verbose=1):
+    def validation(self, model: nn.Module, dataloader: DataLoader, metric_names: list,
+                   verbose: int = 1) -> dict:
         """ Function to make validation of the model
 
         :param model: Input model to validate
         :param dataloader: Validation dataloader
         :param metric_names:
         :param verbose: Flag to include output information
-        :return: Validation score and loss
+        :return:
         """
         model.eval()
         losses = list()
@@ -572,6 +603,7 @@ class Pipeline(AbstractPipeline):
                     )
                 else:  # self.task == 'classification':
                     targets = model_utils.cuda(data[1], self.allocate_on)
+
                 # Make predictions
                 outputs = model(inputs)
 
@@ -579,54 +611,27 @@ class Pipeline(AbstractPipeline):
                 loss = self.criterion(outputs, targets)
                 losses.append(loss.item())
 
-                # Calculate metrics
+                # Get parameters for metrics calculation function
                 if self.task == 'segmentation':
-                    if self.mode == 'binary':
-                        metric_class = METRICS[self.task](
-                            mode=self.mode, activation='sigmoid', device='gpu'
-                        )
-                        for m_name in metric_names:
-                            metric_values[m_name] += [
-                                metric_class.get_metric(
-                                    trues=targets, preds=outputs, metric_name=m_name, threshold=0.5
-                                )
-                            ]
-                    else:  # self.mode == 'multi'
-                        metric_class = METRICS[self.task](
-                            mode=self.mode, activation='softmax', device='gpu'
-                        )
-                        for m_name in metric_names:
-                            metric_values[m_name] += [
-                                metric_class.get_metric(
-                                    trues=targets, preds=outputs, metric_name=m_name,
-                                    threshold=0.5, per_class=True, ignore_class=None
-                                )
-                            ]
+                    get_metric_parameters = dict(
+                        trues=targets, preds=outputs, metric_name=m_name, threshold=0.5
+                    )
+                    if self.mode == 'multi':
+                        get_metric_parameters['per_class'] = True
+                        get_metric_parameters['ignore_class'] = None
                 elif self.task == 'detection':
                     # TODO implement detection metric
-                    metric_values[m_name] += None
+                    raise NotImplementedError
                 else:  # self.task == 'classification'
-                    if self.mode == 'binary':
-                        metric_class = METRICS[self.task](
-                            mode=self.mode, activation='sigmoid'
-                        )
-                        for m_name in metric_names:
-                            metric_values[m_name] += [
-                                metric_class.get_metric(
-                                    trues=targets, preds=outputs, metric_name=m_name
-                                )
-                            ]
-                    else:  # self.mode == 'multi'
-                        metric_class = METRICS[self.task](
-                            mode=self.mode, activation='softmax'
-                        )
-                        for m_name in metric_names:
-                            metric_values[m_name] += [
-                                metric_class.get_metric(
-                                    trues=targets, preds=outputs, metric_name=m_name
-                                )
-                            ]
+                    get_metric_parameters = dict(trues=targets, preds=outputs, metric_name=m_name)
 
+                # Calculate metrics for the batch of images
+                for m_name in metric_names:
+                    metric_values[m_name] += [
+                        self.val_metric_class.get_metric(**get_metric_parameters)
+                    ]
+
+        # Calculate mean metrics for all images
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
         for m_name in metric_names:
@@ -640,13 +645,14 @@ class Pipeline(AbstractPipeline):
             print(string)
         return out_metrics
 
-    def predict(self, model, dataloader, save=False, save_dir='', **kwargs):
+    def predict(self, model: nn.Module, dataloader: DataLoader, save: bool = False,
+                save_dir: str = '', **kwargs) -> pd.DataFrame:
         """ Function to make predictions
 
-        :param model: Input model
-        :param dataloader: Test dataloader
-        :param save: Flag to save results
-        :param save_dir: Path to save results
+        :param model:       Input model
+        :param dataloader:  Test dataloader
+        :param save:        Flag to save results
+        :param save_dir:    Path to save results
         :return:
         """
         model.eval()
@@ -717,13 +723,6 @@ class Pipeline(AbstractPipeline):
                             tta_stack.append(tta_out)
                         tta_stack = np.squeeze(np.mean(tta_stack, axis=0), 1)
 
-                        tta_stack = np.asarray([
-                            unpad(
-                                resize(img, size=self.img_size_orig[1]),
-                                img_shape=self.img_size_orig)
-                            for img in tta_stack
-                        ], dtype=np.float32)
-
                         if predictions['masks'] is None:
                             predictions['masks'] = tta_stack
                         else:
@@ -733,13 +732,8 @@ class Pipeline(AbstractPipeline):
                     else:  # self.mode == 'multi'
                         outputs = model(inputs)
                         outputs = torch.softmax(outputs, dim=1)
-                        out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1)
-                        out_masks = np.asarray([
-                            unpad(
-                                resize(img, size=self.img_size_orig[1]),
-                                img_shape=self.img_size_orig)
-                            for img in out_masks
-                        ], dtype=np.float32)
+                        out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1).astype(np.float32)
+
                         if predictions['masks'] is None:
                             predictions['masks'] = out_masks
                         else:
@@ -785,16 +779,17 @@ class Pipeline(AbstractPipeline):
             print("Predictions saved. Path: {}".format(csv_path))
         return pred_df
 
-    def postprocessing(self, pred_df: pd.DataFrame, threshold: (list, float) = 0., hole_size: int = None,
-                       obj_size: int = None, save: bool = False, save_dir: str = ''):
+    def postprocessing(self, pred_df: pd.DataFrame, threshold: (list, float) = 0.,
+                       hole_size: int = None, obj_size: int = None, save: bool = False,
+                       save_dir: str = '') -> pd.DataFrame:
         """ Function for predicted data postprocessing
 
-        :param pred_df: Dataset woth predicted images and masks
-        :param threshold: Binarization thresholds
-        :param hole_size: Minimum hole size to fill
-        :param obj_size: Minimum obj size
-        :param save: Flag to save results
-        :param save_dir: Save directory
+        :param pred_df:     Dataset woth predicted images and masks
+        :param threshold:   Binarization thresholds
+        :param hole_size:   Minimum hole size to fill
+        :param obj_size:    Minimum obj size
+        :param save:        Flag to save results
+        :param save_dir:    Save directory
         :return:
         """
 
@@ -824,8 +819,12 @@ class Pipeline(AbstractPipeline):
                     threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
                         else threshold
                     postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
-                    for ch in range(1, mask.shape[-1]):
-                        mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
+                    for ch in range(0, mask.shape[-1]):
+                        if ch == 0:
+                            threshold_0 = 0.5
+                            mask_ch = (mask[:, :, ch] > threshold_0).astype(np.uint8)
+                        else:
+                            mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
                         mask_ch = delete_small_instances(
                             mask_ch,
                             obj_size=obj_size,
@@ -847,14 +846,18 @@ class Pipeline(AbstractPipeline):
         return pred_df
 
     def evaluate_metrics(self, true_df: pd.DataFrame, pred_df: pd.DataFrame,
+                         ignore_class: int = None, label_colors: dict = None,
                          iou_thresholds: list = None, metric_names: list = None,
                          verbose: int = 1) -> dict:
         """ Common function to evaluate metrics
 
         :param true_df:
         :param pred_df:
+        :param ignore_class:
+        :param label_colors:
         :param iou_thresholds:
         :param metric_names:
+        :param verbose:
         :return:
         """
 
@@ -873,7 +876,9 @@ class Pipeline(AbstractPipeline):
             if self.mode == 'binary':
                 out_metrics = dict()
                 for m_name in metric_names:
-                    threshold, metric_value = get_opt_threshold(masks_t, masks_p, metric_name=m_name)
+                    threshold, metric_value = get_opt_threshold(
+                        masks_t, masks_p, metric_name=m_name
+                    )
                     out_metrics[m_name] = {'threshold': threshold, 'value': metric_value}
                 if verbose == 1:
                     for k, v in out_metrics.items():
@@ -882,26 +887,26 @@ class Pipeline(AbstractPipeline):
                             print(f'- best {m_k}: {m_v:.5f}')
 
             else:  # self.mode == 'multi'
-                masks_p = np.moveaxis(masks_p, -1, 1)
                 out_metrics = dict()
-                colors = allowed_parameters.SEG_MULTI_COLORS  # HARDCODE
+                colors = label_colors
                 for i, (class_name, class_color) in enumerate(colors.items()):
-                    # TODO delete hardcode in colors and 11
-                    if i + 1 == 11:  # HARDCODE
+                    if i == ignore_class:
                         continue
                     class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
-                    class_masks_p = masks_p[:, i + 1, :, :]
+                    class_masks_p = masks_p[..., i + 1]
+
+                    # for img_idx in range(0, 10):
+                    #     draw_images([class_masks_t[img_idx, ...], class_masks_p[img_idx, ...]])
 
                     out_metrics[class_name] = dict()
                     for m_name in metric_names:
-                        threshold, metric_value = get_opt_threshold(class_masks_t,
-                                                                    class_masks_p,
-                                                                    metric_name=m_name)
-                        out_metrics[class_name][m_name] = {'threshold': threshold,
-                                                           'value': metric_value}
-
-                    # idx = np.random.randint(0, class_masks_t.shape[0], 1)[0]
-                    # draw_images([class_masks_t[idx, ...], class_masks_p[idx, ...]])
+                        threshold, metric_value = get_opt_threshold(
+                            class_masks_t, class_masks_p, metric_name=m_name
+                        )
+                        out_metrics[class_name][m_name] = {
+                            'threshold': threshold,
+                            'value': metric_value
+                        }
 
                 if verbose == 1:
                     for class_name, class_values in out_metrics.items():
@@ -912,36 +917,18 @@ class Pipeline(AbstractPipeline):
                                 print(f'- best {m_k}: {m_v:.5f}')
 
         else:  # self.task == 'classification'
-            if metric_names is not None:
-                metrics = dict()
-                for m_name in metric_names:
-                    metrics[m_name] = METRICS[self.task][self.mode][m_name]
-            else:
-                raise ValueError(
-                    f"Wrong metric_names parameter: {metric_names}."
+            all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
+            labels_t = all_df['labels_true'].values.astype(np.uint8)
+            labels_p = all_df['labels_pred'].values
+            out_metrics = dict()
+            for m_name in metric_names:
+                out_metrics[m_name] = self.val_metric_class.get_metric_value(
+                    labels_t, labels_p, m_name
                 )
-
-            if self.mode == 'binary':
-                # pred_df['names'] = pred_df['names'].apply(lambda x: x[:-4])
-                all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
-                labels_t = all_df['labels_true'].values.astype(np.uint8)
-                labels_p = all_df['labels_pred'].values
-
-                # print('pipeline.evaluate_classification_metrics', labels_t, labels_p)
-                out_metrics = dict()
-                for m_name in metric_names:
-                    out_metrics[m_name] = metrics[m_name](labels_t, labels_p)
-            else:  # if self.mode == 'multi'
-                all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
-                labels_t = all_df['labels_true'].values.astype(np.uint8)
-                labels_p = all_df['labels_pred'].values
-                out_metrics = dict()
-                for m_name in metric_names:
-                    out_metrics[m_name] = metrics[m_name](labels_t, labels_p)
 
         return out_metrics
 
-    def visualize_preds(self, preds_df, images_path):
+    def visualize_preds(self, preds_df: pd.DataFrame, images_path: str):
         """ Function for simple visualization
 
         :param preds_df: Dataframe with predicted images
@@ -961,10 +948,10 @@ class Pipeline(AbstractPipeline):
                 h, w = self.img_size_orig
                 if h != h_i and w != w_i:
                     image = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
-                self._draw_image_boxes(image, boxes, labels, scores)
+                draw_image_boxes(image, boxes, labels, scores)
 
-        # Get visualization for binary segmentation task
         elif self.task == 'segmentation':
+            # Get visualization for binary segmentation task
             if self.mode == 'binary':
                 for row in preds_df.iterrows():
                     name = row[1]['names']
@@ -975,6 +962,7 @@ class Pipeline(AbstractPipeline):
                     matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
                     msk_img[matching, :] = [0, 0, 0]
                     draw_images([image, mask], orient='vertical')
+
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'
                 for row in preds_df.iterrows():
@@ -982,28 +970,4 @@ class Pipeline(AbstractPipeline):
                     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
                                        dtype=np.uint8)
                     mask = row[1]['masks']
-                    # print(mask.shape)
-                    # TODO delete allowed_parameters.SEG_MULTI_COLORS
-                    # visual_mask = convert_multilabel_mask(
-                    #     mask=mask, how='class2rgb', colors=allowed_parameters.SEG_MULTI_COLORS
-                    # )
                     draw_images([image, mask], orient='vertical')
-
-    @staticmethod
-    def _draw_image_boxes(image, boxes, labels, scores):
-        draw = image.copy()
-        print("-"*30, "\n")
-        preds = [(box, label, score) for box, label, score in zip(boxes, labels, scores)]
-        # preds = sorted(preds, key=lambda x: x[0][0])
-        # print(preds)
-        for pred in preds:
-            box = pred[0]
-            label = pred[1]
-            score = pred[2]
-            draw = cv2.rectangle(image, (box[0], box[1]), (box[2], box[3]), (0, 255, 0), 1)
-            plt.annotate(label, xy=(box[0], box[1]), color='green')
-            plt.annotate('{:.2f}'.format(score), xy=(box[0], box[3]+10), color='green')
-            print(box, label, score)
-        plt.imshow(draw)
-        plt.show()
-
