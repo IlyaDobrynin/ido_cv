@@ -209,13 +209,6 @@ class MultSegDataset(Dataset):
             return self._get_testset(image, fname)
     
     def _get_trainset(self, image: np.ndarray, mask: np.ndarray, name: str):
-        # ToDo remove hardcode
-        # image = pad(image, mode='reflect')
-        # image = resize(image, size=self.model_input_size)
-        # image = resize_image(image, size=self.model_input_size)
-        # # mask = pad(mask, mode='reflect')
-        # # mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
-        # mask = resize_image(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
         mask = convert_multilabel_mask(mask, label_colors=self.colors, how='rgb2class')
         data = {'image': image, 'mask': mask}
         resized = Compose([
