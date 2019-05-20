@@ -87,7 +87,7 @@ def main_pipe(args):
             print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
                 pipeline=pipe_class, model_name=args['model_name'], data_path=path_to_train,
-                model_parameters=args['model_parameters'],
+                model_parameters=args['model_parameters'], label_colors=args['label_colors'],
                 batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
                 use_augs=args['train_augs'], device_ids=args['device_ids'],
                 cudnn_benchmark=args['cudnn_benchmark'], lr_factor=args['lr_factor'],
@@ -120,8 +120,8 @@ def main_pipe(args):
             scores = validation(
                 model=model, pipeline=pipe_class, data_path=path_to_holdout,
                 val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
-                workers=args['workers'], save_preds=args['save_val'],
-                output_path=args['output_path']
+                label_colors=args['label_colors'], workers=args['workers'],
+                save_preds=args['save_val'], output_path=args['output_path']
             )
             # Save thresholds dict
             with open(os.path.join(model_save_dir, 'thresholds.yml'), 'w') as outfile:

@@ -13,8 +13,8 @@ from ..utils.common_utils import get_true_detection
 
 
 def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
-               batch_size: int = 1, workers: int = 1, save_preds: bool = False,
-               output_path: str = '', **kwargs) -> dict:
+               batch_size: int = 1, label_colors: dict = None, workers: int = 1,
+               save_preds: bool = False, output_path: str = '', **kwargs) -> dict:
     """ Validation process
 
     :param model: Model class
@@ -45,6 +45,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
         path_to_dataset=data_path,
         batch_size=batch_size,
         is_train=False,
+        label_colors=label_colors,
         workers=workers,
         shuffle=False,
         augs=False
@@ -84,7 +85,8 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,
-            metric_names=val_metrics
+            metric_names=val_metrics,
+            label_colors=label_colors
         )
 
     # Get score for classification

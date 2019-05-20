@@ -287,7 +287,7 @@ def convert_multilabel_mask(mask: np.ndarray, label_colors: dict, how: str = 'rg
             if i == ignore_class:
                 continue
             matching = np.all(mask == label_colors[cls], axis=-1)
-            out_mask[matching] = i
+            out_mask[matching] = i + 1
     elif how == 'class2rgb':
         out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
         for cls in range(0, n_classes):

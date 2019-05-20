@@ -148,13 +148,23 @@ class MultiLovasz(nn.Module):
 
 class MultiBceMetric(nn.Module):
     def __init__(self,  metric: str, alpha: float = 0.3, class_weights: list = None,
-                 num_classes=11, ignore_class: int = None):
+                 num_classes=2, ignore_class: int = None):
         super().__init__()
         self.nll_loss = nn.CrossEntropyLoss()
         self.alpha = alpha
         self.num_classes = num_classes
         self.metric = metric
         self.ignore_class = ignore_class
+        if class_weights is None:
+            self.class_weights = [1] * num_classes
+        else:
+            if len(class_weights) != num_classes:
+                raise ValueError(
+                    f"Length od class weights should be the same as num classes. "
+                    f"Give: num_classes = {num_classes}, "
+                    f"len(class_weights) = {len(class_weights)}."
+                )
+            self.class_weights = class_weights
 
     def __call__(self, preds: torch.Tensor, trues: torch.Tensor):
         metric_output = torch.softmax(preds, dim=1)
@@ -163,6 +173,8 @@ class MultiBceMetric(nn.Module):
         for i in range(metric_output.shape[1]):
             if i == self.ignore_class:
                 continue
+
+            cls_weight = self.class_weights[i]
             metric_target_cls = (trues == i).float()
             metric_output_cls = metric_output[:, i, ...].unsqueeze(1)
 
@@ -190,8 +202,11 @@ class MultiBceMetric(nn.Module):
                        f"Metric {self.metric} doesn't implemented. "
                        f"Variants: 'jaccard;, 'dice', None")
                 loss += (1 - self.alpha) * bce_loss - self.alpha * torch.log(metric_coef)
+
             else:
                 loss += bce_loss
+
+            loss *= cls_weight
 
         if self.ignore_class is not None:
             ignore = 1

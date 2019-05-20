@@ -10,6 +10,7 @@ import torch
 from albumentations.torch.functional import img_to_tensor
 from albumentations import Compose
 from albumentations import Resize
+from albumentations import PadIfNeeded
 from torch.utils.data import Dataset
 
 from ...utils.image_utils import pad
@@ -212,12 +213,11 @@ class MultSegDataset(Dataset):
         mask = convert_multilabel_mask(mask, label_colors=self.colors, how='rgb2class')
         data = {'image': image, 'mask': mask}
         resized = Compose([
+            PadIfNeeded(min_height=self.model_input_size, min_width=self.model_input_size,
+                        border_mode=cv2.BORDER_CONSTANT),
             Resize(width=self.model_input_size, height=self.model_input_size)
         ], p=1)(**data)
         image, mask = resized['image'], resized['mask']
-
-        # mask = delete_small_instances(mask, obj_size=10)
-        
         if self.augmentations:
             data = {'image': image, 'mask': mask}
             augmented = self.augmentations(**data)
@@ -239,15 +239,20 @@ class MultSegDataset(Dataset):
         return image, mask, str(name)
     
     def _get_testset(self, image, name):
-        image = pad(image)
-        image = resize(image, size=self.model_input_size)
+        data = {'image': image}
+        resized = Compose([
+            PadIfNeeded(min_height=self.model_input_size, min_width=self.model_input_size,
+                        border_mode=cv2.BORDER_CONSTANT),
+            Resize(width=self.model_input_size, height=self.model_input_size)
+        ], p=1)(**data)
+        image = resized['image']
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
         image = img_to_tensor(image)
         return image, str(name)
-    
+
     def collate_fn(self, batch):
         '''Pad images and encode targets.
 

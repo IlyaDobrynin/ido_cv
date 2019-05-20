@@ -183,6 +183,7 @@ class Pipeline(AbstractPipeline):
             )
         if (self.task == 'segmentation') \
                 and (self.mode == 'multi') \
+                and (is_train) \
                 and (label_colors is None):
             raise ValueError(
                 f"Provide label_colors for multiclass segmentation task!"
@@ -891,6 +892,11 @@ class Pipeline(AbstractPipeline):
                             print(f'- best {m_k}: {m_v:.5f}')
 
             else:  # self.mode == 'multi'
+                if label_colors is None:
+                    raise ValueError(
+                        f"Provide label_colors for multiclass segmentation task!"
+                    )
+
                 out_metrics = dict()
                 colors = label_colors
                 for i, (class_name, class_color) in enumerate(colors.items()):
