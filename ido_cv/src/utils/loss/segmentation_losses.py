@@ -40,15 +40,6 @@ class BinaryBceMetric(nn.Module):
         else:
             weights = None
 
-        # from ..image_utils import draw_images
-        # import numpy as np
-        # target_img = metric_target.data.cpu().numpy().astype(np.float32)
-        # pred_img = metric_output.data.cpu().numpy().astype(np.float32)
-        # for img_idx in range(target_img.shape[0]):
-        #     gt = np.squeeze(target_img[img_idx, ...], axis=0)
-        #     pr = np.squeeze(pred_img[img_idx, ...], axis=0)
-        #     draw_images([gt, pr])
-
         bce_loss = self.bce_loss(preds, trues)
         if self.metric:
             if self.metric == 'jaccard':
@@ -135,60 +126,47 @@ class MultiLovasz(nn.Module):
 
     def __call__(self, outputs, targets):
         outputs = F.softmax(outputs, dim=1)
-
-        # for i in range(outputs.shape[1]):
-        #     if i == self.ignore:
-        #         continue
-        #     metric_target_cls = (targets == i).float()
-        #     metric_output_cls = outputs[:, i, ...].unsqueeze(1)
-        #     from ..image_utils import draw_images
-        #     import numpy as np
-        #     target_img = metric_target_cls.data.cpu().numpy().astype(np.float32)
-        #     pred_img = metric_output_cls.data.cpu().numpy().astype(np.float32)
-        #     for img_idx in range(target_img.shape[0]):
-        #         gt = np.squeeze(target_img[img_idx, ...], axis=0)
-        #         pr = np.squeeze(pred_img[img_idx, ...], axis=0)
-        #         if np.sum(gt) != 0:
-        #             draw_images([gt, pr])
-
         loss = lovasz_softmax(probas=outputs, labels=targets, ignore=self.ignore)
         return loss
 
 
 class MultiBceMetric(nn.Module):
     def __init__(self,  metric: str, alpha: float = 0.3, class_weights: list = None,
-                 num_classes=11, ignore_class: int = None):
+                 num_classes=2, ignore_class: int = None):
         super().__init__()
-        self.nll_loss = nn.CrossEntropyLoss()
         self.alpha = alpha
         self.num_classes = num_classes
         self.metric = metric
         self.ignore_class = ignore_class
+        if class_weights is None:
+            class_weights = [1] * num_classes
+            self.class_weights = torch.Tensor(class_weights)
+        else:
+            if len(class_weights) != num_classes:
+                raise ValueError(
+                    f"Length od class weights should be the same as num classes. "
+                    f"Give: num_classes = {num_classes}, "
+                    f"len(class_weights) = {len(class_weights)}."
+                )
+            self.class_weights = torch.Tensor(class_weights)
 
     def __call__(self, preds: torch.Tensor, trues: torch.Tensor):
         metric_output = torch.softmax(preds, dim=1)
-
         loss = 0
         for i in range(metric_output.shape[1]):
             if i == self.ignore_class:
                 continue
+
+            cls_weight = self.class_weights[i]
             metric_target_cls = (trues == i).float()
             metric_output_cls = metric_output[:, i, ...].unsqueeze(1)
 
-            # from ..image_utils import draw_images
-            # import numpy as np
-            # target_img = metric_target_cls.data.cpu().numpy().astype(np.float32)
-            # pred_img = metric_output_cls.data.cpu().numpy().astype(np.float32)
-            # for img_idx in range(target_img.shape[0]):
-            #     if i == 0:
-            #         continue
-            #     gt = np.squeeze(target_img[img_idx, ...], axis=0)
-            #     pr = np.squeeze(pred_img[img_idx, ...], axis=0)
-            #     if np.sum(gt) != 0:
-            #         draw_images([gt, pr])
-
+            # self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=self.class_weights)
             self.bce_loss = nn.BCEWithLogitsLoss()
-            bce_loss = self.bce_loss(metric_output_cls, metric_target_cls)
+            bce_loss = self.bce_loss(
+                metric_output_cls,
+                metric_target_cls
+            )
             if self.metric:
                 if self.metric == 'jaccard':
                     metric_coef = jaccard_coef(metric_target_cls, metric_output_cls)
@@ -198,7 +176,8 @@ class MultiBceMetric(nn.Module):
                     raise NotImplementedError(
                        f"Metric {self.metric} doesn't implemented. "
                        f"Variants: 'jaccard;, 'dice', None")
-                loss += (1 - self.alpha) * bce_loss - self.alpha * torch.log(metric_coef)
+                loss += (1 - self.alpha) * bce_loss - \
+                        self.alpha * torch.log(metric_coef) * cls_weight
             else:
                 loss += bce_loss
 

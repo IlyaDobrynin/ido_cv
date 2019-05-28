@@ -6,15 +6,10 @@ Module implements functions for work with dataset
 import os
 import cv2
 import numpy as np
+import pandas as pd
 import torch
 from albumentations.torch.functional import img_to_tensor
-from albumentations import Compose
-from albumentations import Resize
 from torch.utils.data import Dataset
-
-from ...utils.image_utils import pad
-from ...utils.image_utils import resize
-from ...utils.image_utils import resize_image
 from ...utils.image_utils import draw_images
 from ...utils.image_utils import convert_multilabel_mask
 
@@ -31,9 +26,9 @@ class BinSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, initial_size: tuple, model_input_size: int, train: bool,
-                 add_depth: bool = False, data_path: str = None, data_file: np.ndarray = None,
-                 augmentations=None, show_sample: bool = False, **kwargs):
+    def __init__(self, train: bool, add_depth: bool = False, data_path: str = None,
+                 data_file: pd.DataFrame = None, common_augs=None, train_time_augs=None,
+                 show_sample: bool = False):
 
         self.train = train
         self.show_sample = show_sample
@@ -45,15 +40,13 @@ class BinSegDataset(Dataset):
             self.file_names = data_file['names'].values.tolist()
             self.data_file = data_file
             self.from_path = False
-
-        self.initial_size = initial_size
-
-        if not model_input_size:
-            self.model_input_size = initial_size
         else:
-            self.model_input_size = model_input_size
-            
-        self.augmentations = augmentations
+            raise ValueError(
+                f"data_path or data_file should be provided"
+            )
+
+        self.common_augs = common_augs
+        self.train_time_augs = train_time_augs
         self.add_depth = add_depth
 
     def __len__(self):
@@ -76,40 +69,41 @@ class BinSegDataset(Dataset):
             return self._get_testset(image, fname)
     
     def _get_trainset(self, image, mask, name):
-        data = {'image': image, 'mask': mask}
-        resized = Compose([
-            Resize(width=self.model_input_size, height=self.model_input_size)
-        ], p=1)(**data)
-        image, mask = resized['image'], resized['mask']
-        if self.augmentations:
+        if self.common_augs:
             data = {'image': image, 'mask': mask}
-            augmented = self.augmentations(**data)
+            common_augs = self.common_augs(**data)
+            image, mask = common_augs['image'], common_augs['mask']
+        if self.train_time_augs:
+            data = {'image': image, 'mask': mask}
+            augmented = self.train_time_augs(**data)
             image, mask = augmented['image'], augmented['mask']
-            mask[mask > 0] = 255
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
 
+        # image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
         if len(mask.shape) == 2:
             mask = np.expand_dims(mask, axis=-1)
+
         image = img_to_tensor(image)
         mask = img_to_tensor(mask)
 
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
-            viz_mask = np.squeeze(mask.data.numpy(), 0)
-            print(viz_image.shape, viz_mask.shape)
+            viz_mask = np.squeeze(np.moveaxis(mask.data.numpy(), 0, -1), -1)
             draw_images([viz_image, viz_mask])
 
         return image, mask, str(name)
     
     def _get_testset(self, image, name):
-        image = pad(image)
-        image = resize(image, size=self.model_input_size)
-        if self.augmentations:
+        if self.common_augs:
             data = {'image': image}
-            augmented = self.augmentations(**data)
+            common_augs = self.common_augs(**data)
+            image = common_augs['image']
+        if self.train_time_augs:
+            data = {'image': image}
+            augmented = self.train_time_augs(**data)
             image = augmented['image']
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
@@ -137,7 +131,8 @@ class BinSegDataset(Dataset):
           padded images, stacked cls_targets, stacked loc_targets.
         '''
         imgs = [x[0] for x in batch]
-        h = w = self.model_input_size
+        # ToDo add checks
+        h, w = imgs[0].shape[1], imgs[0].shape[2]
         if self.train:
             masks = [x[1] for x in batch]
             names = [x[2] for x in batch]
@@ -161,9 +156,9 @@ class MultSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, initial_size: tuple, model_input_size: int, train: bool,
-                 add_depth: bool = False, data_path: str = None, data_file: np.ndarray = None,
-                 augmentations=None, show_sample: bool = False, **kwargs):
+    def __init__(self, train: bool, add_depth: bool = False, data_path: str = None,
+                 data_file: pd.DataFrame = None, common_augs=None, train_time_augs=None,
+                 show_sample: bool = False, **kwargs):
 
         self.train = train
         self.show_sample = show_sample
@@ -176,14 +171,9 @@ class MultSegDataset(Dataset):
             self.data_file = data_file
             self.from_path = False
 
-        self.initial_size = initial_size
-        if not model_input_size:
-            self.model_input_size = initial_size
-        else:
-            self.model_input_size = model_input_size
-        
         self.colors = kwargs['label_colors']
-        self.augmentations = augmentations
+        self.common_augs = common_augs
+        self.train_time_augs = train_time_augs
         self.add_depth = add_depth
     
     def __len__(self):
@@ -207,25 +197,14 @@ class MultSegDataset(Dataset):
             return self._get_testset(image, fname)
     
     def _get_trainset(self, image: np.ndarray, mask: np.ndarray, name: str):
-        # ToDo remove hardcode
-        # image = pad(image, mode='reflect')
-        # image = resize(image, size=self.model_input_size)
-        # image = resize_image(image, size=self.model_input_size)
-        # # mask = pad(mask, mode='reflect')
-        # # mask = resize(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
-        # mask = resize_image(mask, size=self.model_input_size, interpolation=cv2.INTER_NEAREST)
         mask = convert_multilabel_mask(mask, label_colors=self.colors, how='rgb2class')
-        data = {'image': image, 'mask': mask}
-        resized = Compose([
-            Resize(width=self.model_input_size, height=self.model_input_size)
-        ], p=1)(**data)
-        image, mask = resized['image'], resized['mask']
-
-        # mask = delete_small_instances(mask, obj_size=10)
-        
-        if self.augmentations:
+        if self.common_augs:
             data = {'image': image, 'mask': mask}
-            augmented = self.augmentations(**data)
+            common_augs = self.common_augs(**data)
+            image, mask = common_augs['image'], common_augs['mask']
+        if self.train_time_augs:
+            data = {'image': image, 'mask': mask}
+            augmented = self.train_time_augs(**data)
             image, mask = augmented['image'], augmented['mask']
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
@@ -244,15 +223,17 @@ class MultSegDataset(Dataset):
         return image, mask, str(name)
     
     def _get_testset(self, image, name):
-        image = pad(image)
-        image = resize(image, size=self.model_input_size)
+        if self.common_augs:
+            data = {'image': image}
+            common_augs = self.common_augs(**data)
+            image = common_augs['image']
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
         image = img_to_tensor(image)
         return image, str(name)
-    
+
     def collate_fn(self, batch):
         '''Pad images and encode targets.
 
@@ -265,7 +246,8 @@ class MultSegDataset(Dataset):
           padded images, stacked cls_targets, stacked loc_targets.
         '''
         imgs = [x[0] for x in batch]
-        h = w = self.model_input_size
+        # ToDo add checks
+        h, w = imgs[0].shape[1], imgs[0].shape[2]
         if self.train:
             masks = [x[1] for x in batch]
             names = [x[2] for x in batch]

@@ -6,6 +6,24 @@
 from . import classification_dataset
 from . import detection_dataset
 from . import segmentation_dataset
+from . import ocr_dataset
+
+datasets_dict = {
+    'classification': {
+        'binary': classification_dataset.ClassifyDataset,
+        'multi': classification_dataset.ClassifyDataset
+    },
+    'segmentation': {
+        'binary': segmentation_dataset.BinSegDataset,
+        'multi': segmentation_dataset.MultSegDataset
+    },
+    'detection': {
+        'all': detection_dataset.RetinaDataset
+    },
+    'ocr': {
+        'all': ocr_dataset.OCRDataset
+    }
+}
 
 
 class DatasetFacade:
@@ -22,25 +40,21 @@ class DatasetFacade:
     """
     def __init__(self, task: str, mode: str = None):
 
-        if task == 'classification':
-            self.__dataset_class = classification_dataset.ClassifyDataset
-        elif task == 'segmentation':
-            if mode == 'binary':
-                self.__dataset_class = segmentation_dataset.BinSegDataset
-            elif mode == 'multi':
-                self.__dataset_class = segmentation_dataset.MultSegDataset
-            else:
-                raise ValueError(
-                    f"Wrong parameter mode: {mode}. "
-                    f"For segmentation should be 'binary' or 'multi'."
-                )
-        elif task == 'detection':
-            self.__dataset_class = detection_dataset.RetinaDataset
-        else:
+        tasks = datasets_dict.keys()
+        if task not in tasks:
             raise ValueError(
-                f"Wrong parameter task: {task}. "
-                f"Should be 'classification', 'segmentation' or 'detection'."
+                f"Wrong task parameter: {task}. "
+                f"Should be: {[t for t in tasks]}"
             )
+
+        modes = datasets_dict[task].keys()
+        if mode not in modes:
+            raise ValueError(
+                f"Wrong task parameter: {mode}. "
+                f"For {task} should be: {[m for m in modes]}"
+            )
+
+        self.__dataset_class = datasets_dict[task][mode]
 
     @property
     def get_dataset_class(self):

@@ -33,9 +33,9 @@ def test_parameters(parameters):
         f"Wrong loss name: {parameters['loss_name']}." \
         f" Should be one of {LOSS_NAMES[parameters['task']][parameters['mode']].keys()}"
     
-    assert parameters['optimizer'] in OPTIMIZERS,\
+    assert parameters['optimizer'] in OPTIMIZERS.keys(),\
         f"Wrong optimizer: {parameters['optimizer']}." \
-        f"Should be one of {OPTIMIZERS}"
+        f"Should be one of {OPTIMIZERS.keys()}"
     
     assert parameters['checkpoint_metric'] in CHP_METRICS[parameters['task']][parameters['mode']], \
         f"Wrong checkpoint_metric: {parameters['checkpoint_metric']}. " \

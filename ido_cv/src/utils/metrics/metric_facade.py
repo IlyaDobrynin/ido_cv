@@ -6,13 +6,15 @@
 from . import classification_metrics
 from . import segmentation_metrics
 from . import detection_metrics
+from . import ocr_metrics
 
 
 # ToDo: implement detection metrics
 metrics_tasks = {
     'classification': classification_metrics.ClassificationMetrics,
     'segmentation': segmentation_metrics.SegmentationMetrics,
-    'detection': None
+    'detection': None,
+    'ocr': ocr_metrics.OCRMetrics
 }
 
 

@@ -6,6 +6,7 @@
 from . import classification_losses
 from . import segmentation_losses
 from . import detection_losses
+from . import ocr_losses
 
 losses_dict = {
     'segmentation': {
@@ -32,6 +33,11 @@ losses_dict = {
         'multi': {
             'nll': classification_losses.NllLoss,
             'ce': classification_losses.CELoss
+        }
+    },
+    'ocr': {
+        'all': {
+            'ctc': ocr_losses.CTCLoss
         }
     }
 }

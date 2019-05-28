@@ -1,25 +1,21 @@
 from .utils import tta
+import torch.optim as optimizers
 
 
 TASKS_MODES = {
     'segmentation': {
-        'binary': [
-            'unet',
-            'fpn',
-            'deeplabv3'
-        ],
-        'multi': [
-            'unet',
-            'fpn',
-            'deeplabv3'
-        ],
+        'binary':   ['unet', 'fpn', 'deeplabv3'],
+        'multi':    ['unet', 'fpn', 'deeplabv3']
     },
     'detection': {
-        'all': 'retinanet'
+        'all':      ['retinanet']
     },
     'classification': {
-        'binary': ['basic_model'],
-        'multi': ['basic_model']
+        'binary':   ['basic_model'],
+        'multi':    ['basic_model']
+    },
+    'ocr': {
+        'all':      ['crnn']
     }
 }
 
@@ -60,6 +56,7 @@ LOSS_PARAMETERS = {
         'all': {
             'focal_loss': dict()
         }
+
     },
     'classification': {
         'binary': {
@@ -69,20 +66,28 @@ LOSS_PARAMETERS = {
             'nll': dict(),
             'ce': dict()
         }
+    },
+    'ocr': {
+        'all': {
+            'ctc': dict()
+        }
     }
 }
 
 METRIC_NAMES = {
     'segmentation': {
-        'binary': ['dice', 'jaccard', 'm_iou'],
-        'multi': ['dice', 'jaccard', 'm_iou'],
+        'binary':   ['dice', 'jaccard', 'm_iou'],
+        'multi':    ['dice', 'jaccard', 'm_iou'],
     },
     'detection': {
-        'all': ['map']
+        'all':      ['map']
     },
     'classification': {
-        'binary': ['accuracy'],
-        'multi': ['accuracy']
+        'binary':   ['accuracy'],
+        'multi':    ['accuracy']
+    },
+    'ocr': {
+        'all':      ['accuracy']
     }
 }
 
@@ -91,11 +96,11 @@ METRIC_PARAMETERS = {
     'segmentation': {
         'binary': dict(
             activation='sigmoid',
-            device='gpu'
+            device='cpu'
         ),
         'multi': dict(
             activation='softmax',
-            device='gpu'
+            device='cpu'
         )
     },
     'detection': {
@@ -104,6 +109,12 @@ METRIC_PARAMETERS = {
     'classification': {
         'binary': dict(activation='sigmoid'),
         'multi': dict(activation='softmax')
+    },
+    'ocr': {
+        'all': dict(ignore_case=False,
+                    alphabet=r'°1234567890абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦ'
+                             r'ЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@"#№%$'
+                             r'%^&*();:-_=+\|/?<>~`., ')
     }
 }
 
@@ -243,25 +254,33 @@ MODEL_PARAMETERS = {
     }
 }
 
-OPTIMIZERS = [
-    'adam',
-    'sgd',
-    'rmsprop'
-]
+OPTIMIZERS = {
+    'adam': optimizers.Adam,
+    'rmsprop': optimizers.RMSprop,
+    'sgd': optimizers.SGD
+}
+
+OPTIMIZER_PARAMETERS = {
+    'adam': dict(weight_decay=0.00001),
+    'sgd': dict(),
+    'rmsprop': dict(nesterov=True, momentum=0.9)
+}
 
 CHECKPOINT_METRICS = {
     'segmentation': {
-        'binary': ['loss', 'dice', 'jaccard'],
-        'multi': ['loss', 'dice', 'jaccard']
+        'binary':   ['loss', 'dice', 'jaccard'],
+        'multi':    ['loss', 'dice', 'jaccard']
     },
     'detection': {
-        'all': ['loss']
+        'all':      ['loss']
     },
     'classification': {
-        'binary': ['loss', 'accuracy'],
-        'multi': ['loss', 'accuracy']
+        'binary':   ['loss', 'accuracy'],
+        'multi':    ['loss', 'accuracy']
+    },
+    'ocr': {
+        'all':      ['loss', 'accuracy']
     }
-
 }
 
 TTA = {
@@ -284,79 +303,34 @@ TTA = {
     },
     'classification': {
     
+    },
+    'ocr': {
+
     }
 }
 
-digits_colors = {
-    'background': [0, 0, 0],
-    '0_digit': [0, 0, 250],             #  0 digit
-    '1_digit': [50, 0, 0],              #  1 digit
-    '2_digit': [0, 50, 0],              #  2 digit
-    '3_digit': [0, 0, 50],              #  3 digit
-    '4_digit': [50, 50, 0],             #  4 digit
-    '5_digit': [50, 150, 0],            #  5 digit
-    '6_digit': [150, 50, 0],            #  6 digit
-    '7_digit': [50, 0, 50],             #  7 digit
-    '8_digit': [50, 150, 250],          #  8 digit
-    '9_digit': [0, 100, 250],           #  9 digit
-    '10_digit': [0, 100, 50],           #  Handlabelled word
-}
+class ParameterBuilder:
+    """ Class for building parameters for model training, validation and predict
 
+    """
 
-# ToDo: remove code below
-import numpy as np
+    def __init__(self, task: str, mode: str):
+        self.task = task
+        self.mode = mode
+        self.__loss_params_dict = LOSS_PARAMETERS
+        self.__metric_params_dict = METRIC_PARAMETERS
+        self.__model_params_dict = MODEL_PARAMETERS
+        self.__optim_params_dict = OPTIMIZER_PARAMETERS
 
-def color_map(N=256, normalized=False):
-    def bitget(byteval, idx):
-        return ((byteval & (1 << idx)) != 0)
+    @property
+    def get_metric_parameters(self):
+        return self.__metric_params_dict[self.task][self.mode]
 
-    dtype = 'float32' if normalized else 'uint8'
-    cmap = np.zeros((N, 3), dtype=dtype)
-    for i in range(N):
-        r = g = b = 0
-        c = i
-        for j in range(8):
-            r = r | (bitget(c, 0) << 7-j)
-            g = g | (bitget(c, 1) << 7-j)
-            b = b | (bitget(c, 2) << 7-j)
-            c = c >> 3
+    def get_loss_parameters(self, loss_name: str):
+        return self.__loss_params_dict[self.task][self.mode][loss_name]
 
-        cmap[i] = np.array([r, g, b])
+    def get_model_parameters(self, model_name: str):
+        return self.__model_params_dict[self.task][self.mode][model_name]
 
-    cmap = cmap/255 if normalized else cmap
-    return cmap
-
-
-def get_pascal_color_map():
-    labels = [
-        'background',
-        'aeroplane',
-        'bicycle',
-        'bird',
-        'boat',
-        'bottle',
-        'bus',
-        'car',
-        'cat',
-        'chair',
-        'cow',
-        'diningtable',
-        'dog',
-        'horse',
-        'motorbike',
-        'person',
-        'pottedplant',
-        'sheep',
-        'sofa',
-        'train',
-        'tvmonitor'
-    ]
-    cmap = color_map()
-    colors = dict()
-    for i, cls in enumerate(labels):
-        colors[cls] = list(cmap[i])
-    # colors['void'] = [224, 224, 192]
-    return colors
-
-
-pascal_voc_colors = get_pascal_color_map()
+    def get_optimizer_parameters(self, optimizer_name: str):
+        return self.__optim_params_dict[optimizer_name]

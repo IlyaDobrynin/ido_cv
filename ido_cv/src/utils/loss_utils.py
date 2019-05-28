@@ -70,7 +70,7 @@ def get_weight(trues, weight_type=0):
     else:
         raise ValueError('Unexpected image size: {}. Should be 128, 256, 512 or 1024.'.format(trues.shape[-1]))
 
-    bin_target = torch.where(trues > 0, torch.tensor(1), torch.tensor(0))
+    bin_target = torch.where(trues > 0, torch.Tensor(1), torch.Tensor(0))
     ave_mask = F.avg_pool2d(bin_target.float(), kernel_size=kernel_size, padding=10, stride=1)
     if weight_type == 0:
         edge_idx = (ave_mask.ge(0.01) * ave_mask.le(0.99)).float()

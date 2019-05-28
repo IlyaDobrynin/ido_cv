@@ -6,27 +6,34 @@
 import os
 import gc
 import numpy as np
+from torch import nn
 from ..pipeline_class import Pipeline
 from ..utils.common_utils import get_true_classification
 from ..utils.common_utils import get_true_segmentation
 from ..utils.common_utils import get_true_detection
+from ..utils.common_utils import get_true_ocr
 
 
-def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
-               batch_size: int = 1, workers: int = 1, save_preds: bool = False,
-               output_path: str = '', **kwargs) -> dict:
+def validation(
+        model:          nn.Module,
+        pipeline:       Pipeline,
+        dataloaders:    dict,
+        data_path:      str,
+        val_metrics:    list,
+        save_preds:     bool = False,
+        output_path:    str = '',
+        **kwargs
+) -> dict:
     """ Validation process
 
-    :param model: Model class
-    :param pipeline: Pipeline class
-    :param data_path: Path to validation images
-    :param labels_path: Path to validation labels
-    :param val_metrics: List of validation metrics names
-    :param batch_size: Size of the data minibatch
-    :param workers: Number of subprocesses to use for data loading
-    :param save_preds: Flag to save predictions
-    :param output_path: Path to save predictions
-    :param kwargs: Dict of keyword arguments
+    :param model:           Model class
+    :param pipeline:        Pipeline class
+    :param dataloaders:     Dataloaders dict
+    :param data_path:       Path to validation images
+    :param val_metrics:     List of validation metrics names
+    :param save_preds:      Flag to save predictions
+    :param output_path:     Path to save predictions
+    :param kwargs:          Dict of keyword arguments
     :return:
     """
 
@@ -41,14 +48,7 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
         nms_thresh = None
         val_iou_thresholds = None
 
-    holdout_loader = pipeline.get_dataloaders(
-        path_to_dataset=data_path,
-        batch_size=batch_size,
-        is_train=False,
-        workers=workers,
-        shuffle=False,
-        augs=False
-    )
+    holdout_loader = dataloaders['holdout_dataloader']
     pred_df = pipeline.predict(
         model=model,
         dataloader=holdout_loader,
@@ -77,10 +77,21 @@ def validation(model, pipeline: Pipeline, data_path: str, val_metrics: list,
         labels_path = os.path.join(data_path, 'masks')
         true_df = get_true_segmentation(
             labels_path=labels_path,
-            mode=mode,
-            size=pipeline.img_size_target
+            mode=mode
         )
 
+        scores = pipeline.evaluate_metrics(
+            true_df=true_df,
+            pred_df=pred_df,
+            metric_names=val_metrics
+        )
+
+    # Get score for ocr
+    elif task == 'ocr':
+        labels_path = os.path.join(data_path, 'labels.csv')
+        true_df = get_true_ocr(
+            labels_path=labels_path
+        )
         scores = pipeline.evaluate_metrics(
             true_df=true_df,
             pred_df=pred_df,

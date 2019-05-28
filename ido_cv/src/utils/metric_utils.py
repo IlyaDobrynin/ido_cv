@@ -1,3 +1,5 @@
+import torch
+from collections.abc import Iterable
 import numpy as np
 from tqdm import tqdm
 import cv2
@@ -137,8 +139,6 @@ def numpy_metric_per_image(trues, preds, metric_name):
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) == 0:
             metrics.append(1)
             continue
-
-        true = resize_image(image=true, size=pred.shape, interpolation=cv2.INTER_NEAREST)
 
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)

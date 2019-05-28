@@ -4,6 +4,8 @@
 """
 import os
 import math
+from hashlib import sha1
+import numpy as np
 import pandas as pd
 import cv2
 import torch
@@ -330,7 +332,7 @@ def get_true_classification(labels_path: str) -> pd.DataFrame:
     return true_df
 
 
-def get_true_segmentation(labels_path: str, mode: str, size: (tuple, int)) -> pd.DataFrame:
+def get_true_segmentation(labels_path: str, mode: str) -> pd.DataFrame:
     """ Function makes dataframe with true labels for segmentation task
 
     :param labels_path: path to the classification labels
@@ -359,13 +361,13 @@ def get_true_segmentation(labels_path: str, mode: str, size: (tuple, int)) -> pd
                 mask = cv2.imread(filename=os.path.join(labels_path, mask_name))
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
 
-                # ToDo: remove hardcode
-                from .image_utils import pad, resize
-                # mask = resize_image(mask, size=size, interpolation=cv2.INTER_NEAREST)
-                mask = pad(mask)
-                mask = resize(mask, size=size, interpolation=cv2.INTER_NEAREST)
-                # from .image_utils import draw_images
-                # draw_images([mask])
+                # # ToDo: remove hardcode
+                # from .image_utils import pad, resize
+                # # mask = resize_image(mask, size=size, interpolation=cv2.INTER_NEAREST)
+                # mask = pad(mask)
+                # mask = resize(mask, size=size, interpolation=cv2.INTER_NEAREST)
+                # # from .image_utils import draw_images
+                # # draw_images([mask])
 
                 true_masks.append(mask)
             true_df['names'] = mask_names
@@ -379,3 +381,76 @@ def get_true_segmentation(labels_path: str, mode: str, size: (tuple, int)) -> pd
             f"Labels path {labels_path} does not exists."
         )
     return true_df
+
+
+def get_true_ocr(labels_path: str) -> pd.DataFrame:
+    if os.path.exists(labels_path):
+        true_df = pd.read_csv(filepath_or_buffer=os.path.join(labels_path), sep=';')
+    else:
+        raise ValueError(
+            f"Labels path {labels_path} does not exists."
+        )
+    return true_df
+
+
+def make_images_df(images: (str, np.ndarray), labels_path: str=None) -> pd.DataFrame:
+    """ Function make pandas dataframe with input images
+
+    :param images: Input image (or images)
+    :param labels_path: True dates file
+    :return:
+    """
+    if type(images) == np.ndarray:
+        if len(images.shape) == 3:
+            images = np.expand_dims(images, axis=0)
+        fnames = [(str(sha1(images[i, ...]).hexdigest()) + '.png') for i in range(images.shape[0])]
+        images_ = [image for image in images]
+
+        if labels_path is not None:
+            raise ValueError(
+                f"If type of images id numpy.ndarray, you can't get true labels file."
+            )
+        out_df = pd.DataFrame()
+        out_df['names'] = fnames
+        out_df['images'] = images_
+
+    elif type(images) == str:
+        if os.path.exists(images):
+            fnames = os.listdir(images)
+            images_ = [
+                cv2.cvtColor(cv2.imread(os.path.join(images, name)), cv2.COLOR_BGR2RGB)
+                for name in fnames
+            ]
+        else:
+            raise ValueError(
+                f'Wrong path to images: {images}'
+            )
+        out_df = pd.DataFrame()
+        out_df['names'] = fnames
+        out_df['images'] = images_
+
+        if labels_path is not None:
+            if os.path.exists(labels_path):
+                with open(labels_path, 'r') as labels:
+                    lines = labels.readlines()
+                labels_df = pd.DataFrame()
+                names = []
+                dates = []
+                for line in lines:
+                    line = line.strip().split()
+                    name = line[0] + '.png'
+                    date = [int(ch) for ch in line[1:]]
+                    names.append(name)
+                    dates.append(date)
+                labels_df['names'] = names
+                labels_df['dates'] = dates
+                out_df = out_df.merge(labels_df, on='names')
+            else:
+                raise RuntimeError(
+                    f'Wrong path to labels_path: {labels_path}'
+                )
+    else:
+        raise ValueError(
+            f'Wrong type of images: {type(images)}. Should be str or numpy.ndarray'
+        )
+    return out_df

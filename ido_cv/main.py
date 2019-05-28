@@ -38,23 +38,24 @@ def main_pipe(args):
     pipe_class = Pipeline(
         task=args['task'],
         mode=args['mode'],
-        loss_name=args['loss_name'],
-        optim_name=args['optimizer'],
         allocate_on=allocate_on,
-        tta_list=tta_list,
-        img_size_orig=args['in_size_orig'],
-        img_size_target=args['in_size_target'],
         random_seed=args['seed'],
-        time=args['time']
+        time=args['time'],
+        label_colors=args['label_colors'],
+        alphabet_characters=args['alphabet_characters'],
     )
 
     task = pipe_class.task
     mode = pipe_class.mode
     time = pipe_class.time
-    model_save_dir = dirs.make_dir(
-        relative_path=f'models/{task}/{mode}/{args["model_name"]}/{time}',
-        top_dir=args['output_path']
-    )
+
+    if 't' in args['stages']:
+        model_save_dir = dirs.make_dir(
+            relative_path=f'models/{task}/{mode}/{args["model_name"]}/{time}',
+            top_dir=args['output_path']
+        )
+    else:
+        model_save_dir = None
 
     # Get initial model, initial parameters (first epoch, first step, best measure)
     # and model_parameters
@@ -69,7 +70,6 @@ def main_pipe(args):
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']
-    # args['best_measure'] = initial_parameters['best_measure']
     args['best_measure'] = 0
     args['model_parameters'] = model_parameters
 
@@ -79,6 +79,55 @@ def main_pipe(args):
     path_to_holdout = os.path.join(args['data_path'], 'holdout')
     path_to_test = os.path.join(args['data_path'], 'test')
 
+    # Get dataloaders
+    common_dataloader_parameters = dict(
+        workers=args['workers'],
+        common_augs=args['common_augs'],
+        train_time_augs=args['train_time_augs']
+    )
+    find_lr_dataloader = pipe_class.get_dataloaders(
+        path_to_dataset=path_to_train,
+        batch_size=5,
+        is_train=True,
+        shuffle=args['shuffle_train'],
+        **common_dataloader_parameters
+    )
+    train_loader = pipe_class.get_dataloaders(
+        path_to_dataset=path_to_train,
+        batch_size=args['batch_size'],
+        is_train=True,
+        shuffle=args['shuffle_train'],
+        **common_dataloader_parameters
+    )
+    val_loader = pipe_class.get_dataloaders(
+        path_to_dataset=path_to_valid,
+        batch_size=args['batch_size'],
+        is_train=True,
+        shuffle=False,
+        **common_dataloader_parameters
+    )
+    holdout_loader = pipe_class.get_dataloaders(
+        path_to_dataset=path_to_holdout,
+        batch_size=args['batch_size'],
+        is_train=False,
+        shuffle=False,
+        **common_dataloader_parameters
+    )
+    test_loader = pipe_class.get_dataloaders(
+        path_to_dataset=path_to_test,
+        batch_size=args['batch_size'],
+        is_train=False,
+        shuffle=False,
+        **common_dataloader_parameters
+    )
+    dataloaders = dict(
+        find_lr_dataloader=find_lr_dataloader,
+        train_dataloader=train_loader,
+        val_dataloader=val_loader,
+        holdout_dataloader=holdout_loader,
+        test_dataloader=test_loader,
+    )
+
     scores = None
     stages = ['f', 't', 'v']
     if set(args['stages']).intersection(set(stages)):
@@ -86,12 +135,11 @@ def main_pipe(args):
         if 'f' in args['stages']:
             print('-' * 30, ' FINDING LEARNING RATE ', '-' * 30)
             args['learning_rate'] = find_lr(
-                pipeline=pipe_class, model_name=args['model_name'], data_path=path_to_train,
-                model_parameters=args['model_parameters'],
-                batch_size=5, workers=args['workers'], shuffle_dataset=args['shuffle_train'],
-                use_augs=args['train_augs'], device_ids=args['device_ids'],
-                cudnn_benchmark=args['cudnn_benchmark'], lr_factor=args['lr_factor'],
-                path_to_weights=args['path_to_weights']
+                pipeline=pipe_class, model_name=args['model_name'],
+                model_parameters=args['model_parameters'], dataloaders=dataloaders,
+                loss_name=args['loss_name'], optim_name=args['optimizer'],
+                device_ids=args['device_ids'], cudnn_benchmark=args['cudnn_benchmark'],
+                lr_factor=args['lr_factor'], path_to_weights=args['path_to_weights']
             )
 
         # Training line
@@ -102,30 +150,28 @@ def main_pipe(args):
 
             print('-' * 30, ' TRAINING ', '-' * 30)
             model = train(
-                model=model, pipeline=pipe_class, model_save_dir=model_save_dir,
-                val_metrics=args['valid_metrics'], checkpoint_metric=args['checkpoint_metric'],
-                train_data_path=path_to_train, val_data_path=path_to_valid,
-                label_colors=args['label_colors'], batch_size=args['batch_size'],
-                first_step=args['first_step'], best_measure=args['best_measure'],
-                first_epoch=args['first_epoch'], epochs=args['epochs'], n_best=args['n_best'],
-                scheduler=args['scheduler'], workers=args['workers'],
-                shuffle_train=args['shuffle_train'], augs=args['train_augs'],
-                patience=args['patience'], learning_rate=args['learning_rate']
-            )
+                model=model, pipeline=pipe_class, dataloaders=dataloaders,
+                loss_name=args['loss_name'], optim_name=args['optimizer'],
+                model_save_dir=model_save_dir, val_metrics=args['valid_metrics'],
+                checkpoint_metric=args['checkpoint_metric'], first_step=args['first_step'],
+                best_measure=args['best_measure'], first_epoch=args['first_epoch'],
+                epochs=args['epochs'], n_best=args['n_best'], scheduler=args['scheduler'],
+                patience=args['patience'], learning_rate=args['learning_rate'])
 
         # Validation (metrics evaluation) line
         if 'v' in args['stages']:
             # Validation (metrics evaluation) line
             print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
-                model=model, pipeline=pipe_class, data_path=path_to_holdout,
-                val_metrics=args['valid_metrics'], batch_size=args['batch_size'],
-                workers=args['workers'], save_preds=args['save_val'],
-                output_path=args['output_path']
+                model=model, pipeline=pipe_class, dataloaders=dataloaders,
+                data_path=path_to_holdout, val_metrics=args['valid_metrics'],
+                save_preds=args['save_val'], output_path=args['output_path']
             )
-            # Save thresholds dict
-            with open(os.path.join(model_save_dir, 'thresholds.yml'), 'w') as outfile:
-                yaml.dump(scores, outfile, default_flow_style=False)
+            print(scores)
+            if 't' in args['stages']:
+                # Save thresholds dict
+                with open(os.path.join(model_save_dir, 'thresholds.yml'), 'w') as outfile:
+                    yaml.dump(scores, outfile, default_flow_style=False)
 
     # Prediction line
     if 'p' in args['stages']:
@@ -141,7 +187,9 @@ def main_pipe(args):
                     else args['default_threshold']
 
         print(f'Prediction threshold: {threshold}')
-        prediction(model=model, pipeline=pipe_class, data_path=path_to_test,
-                   batch_size=args['batch_size'], workers=args['workers'], threshold=threshold,
-                   postprocess=args['postproc_test'], output_path=args['output_path'],
-                   show_preds=args['show_preds'], save_preds=args['save_test'])
+        prediction(
+            model=model, pipeline=pipe_class, dataloaders=dataloaders, tta_list=args['tta_list'],
+            threshold=threshold, postprocess=args['postproc_test'], output_path=args['output_path'],
+            show_preds=args['show_preds'], save_preds=args['save_test']
+        )
+

@@ -10,9 +10,6 @@ import pandas as pd
 import torch
 from albumentations.torch.functional import img_to_tensor
 from torch.utils.data import Dataset
-from ...utils.image_utils import pad
-from ...utils.image_utils import resize
-from ...utils.image_utils import resize_image
 from ...utils.image_utils import draw_images
 
 
@@ -20,8 +17,8 @@ class ClassifyDataset(Dataset):
     """ Class describes current dataset
     """
 
-    def __init__(self, train, initial_size, model_input_size, data_path=None, data_file=None,
-                 augmentations=None, show_sample=False):
+    def __init__(self, train: bool, data_path: str = None, data_file: pd.DataFrame = None,
+                 common_augs=None, train_time_augs=None, show_sample=False, **kwargs):
 
         self.train = train
 
@@ -33,29 +30,25 @@ class ClassifyDataset(Dataset):
             self.file_names = data_file['names'].values.tolist()
             self.data_file = data_file
             self.from_path = False
-
-        self.initial_size = initial_size
-        self.show_sample = show_sample
-
-        if not model_input_size:
-            self.model_input_size = initial_size
         else:
-            self.model_input_size = model_input_size
+            raise ValueError(
+                f"data_path or data_file should be provided"
+            )
 
-        self.augmentations = augmentations
+        self.show_sample = show_sample
+        self.common_augs = common_augs
+        self.train_time_augs = train_time_augs
 
     def __len__(self):
         return len(self.file_names)
 
     def __getitem__(self, idx):
-        # Get file name, image and mask for train
         fname = self.file_names[idx]
         if self.from_path:
             image = cv2.imread(os.path.join(self.data_path, r'images/{}'.format(fname)))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         else:
             image = self.data_file[self.data_file['names'] == fname]['images'].values[0]
-        image = resize_image(image=image, size=self.initial_size)
 
         if self.train:
             if self.from_path:
@@ -69,11 +62,13 @@ class ClassifyDataset(Dataset):
             return self._get_testset(image, fname)
 
     def _get_trainset(self, image, label, name):
-        image = pad(image)
-        image = resize(image, size=self.model_input_size)
-        if self.augmentations:
+        if self.common_augs:
             data = {'image': image}
-            augmented = self.augmentations(**data)
+            common_augs = self.common_augs(**data)
+            image = common_augs['image']
+        if self.train_time_augs:
+            data = {'image': image}
+            augmented = self.train_time_augs(**data)
             image = augmented['image']
 
         if len(image.shape) == 2:
@@ -88,11 +83,13 @@ class ClassifyDataset(Dataset):
         return image, label, str(name)
 
     def _get_testset(self, image, name):
-        image = pad(image)
-        image = resize(image, size=self.model_input_size)
-        if self.augmentations:
+        if self.common_augs:
             data = {'image': image}
-            augmented = self.augmentations(**data)
+            common_augs = self.common_augs(**data)
+            image = common_augs['image']
+        if self.train_time_augs:
+            data = {'image': image}
+            augmented = self.train_time_augs(**data)
             image = augmented['image']
 
         if len(image.shape) == 2:
@@ -117,7 +114,8 @@ class ClassifyDataset(Dataset):
           padded images, stacked cls_targets, stacked loc_targets.
         '''
         imgs = [x[0] for x in batch]
-        h = w = self.model_input_size
+        # ToDo add checks
+        h = w = imgs[0].shape[1]
         if self.train:
             labels = np.expand_dims(np.asarray([x[1] for x in batch], dtype=np.float32), axis=-1)
             # print('collate.labels', labels)

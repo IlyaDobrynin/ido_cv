@@ -14,27 +14,23 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from skimage.io import imsave
-
+from tqdm import tqdm
 import torch
-import torch.optim as optimizers
 from torch import nn
+from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from tqdm import tqdm
-
 from .. import dirs
 from . import allowed_parameters
-
+from .utils.ocr_utils import LabelConverter
+from .allowed_parameters import ParameterBuilder
 from .models.models_facade import ModelsFacade
 from .data_utils.dataset_facade import DatasetFacade
 from .utils.loss.loss_facade import LossesFacade
 from .utils.metrics.metric_facade import MetricsFacade
-
 from .data_utils.encoder_alt import DataEncoder
-from .data_utils.data_augmentations import Augmentations
-
 from .utils.get_model_config import ConfigParser
 from .utils import model_utils
 from .utils.image_utils import unpad_bboxes
@@ -48,9 +44,6 @@ from .utils.metrics.detection_metrics import mean_ap
 pd.set_option('display.max_columns', 10)
 
 TASKS_MODES = allowed_parameters.TASKS_MODES
-METRIC_PARAMETERS = allowed_parameters.METRIC_PARAMETERS
-MODEL_PARAMETERS = allowed_parameters.MODEL_PARAMETERS
-LOSS_PARAMETERS = allowed_parameters.LOSS_PARAMETERS
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
 
 
@@ -89,10 +82,6 @@ class Pipeline(AbstractPipeline):
                                 - segmentation
                                 - detection
         mode:               Mode for given task. Depends on given task.
-        loss_name:          Loss name. Depends on given task.
-        optim_name:         Name of the model optimizer:
-                                - 'adam'
-                                - 'sgd'
         time:               Current time.
         allocate_on:        Device(s) for locating model
         tta_list:           List of test-time augmentations.
@@ -104,21 +93,29 @@ class Pipeline(AbstractPipeline):
 
     """
 
-    def __init__(self, task: str, mode: str, loss_name: str = None, optim_name: str = None,
-                 time: str = None, allocate_on: str = 'cpu', tta_list: list = None,
-                 random_seed: int = 1, img_size_orig: (int, tuple) = None,
-                 img_size_target: (int, tuple) = None):
+    def __init__(
+            self,
+            task:           str,
+            mode:           str,
+            time:           str = None,
+            allocate_on:    str = 'cpu',
+            random_seed:    int = 1,
+            **kwargs
+    ):
 
         super(Pipeline, self).__init__()
 
-        tasks = TASKS_MODES.keys()
+        # Check if task is in list of existed tasks:
+        # ['segmentation', 'classification', 'detection', 'ocr']
+        self.tasks_modes = TASKS_MODES
+        tasks = self.tasks_modes.keys()
         if task not in tasks:
             raise ValueError(
                 f'Wrong task parameter: {task}. '
                 f'Should be {tasks}.'
             )
-
-        modes = TASKS_MODES[task].keys()
+        # Check if mode is in list of existed modes for this task (see allowed_parameters.py)
+        modes = self.tasks_modes[task].keys()
         if mode not in modes:
             raise ValueError(
                 f'Wrong mode parameter: {mode}. '
@@ -128,6 +125,7 @@ class Pipeline(AbstractPipeline):
         self.task = task
         self.mode = mode
 
+        # Make location parameter. Shows where to locate model
         if allocate_on in ['cpu', 'gpu']:
             self.allocate_on = allocate_on
         else:
@@ -135,33 +133,48 @@ class Pipeline(AbstractPipeline):
                 f'Wrong allocate_on parameter: {allocate_on}. Should be "cpu" or "gpu"'
             )
 
-        if self.task == 'segmentation':
-            self.tta_list = tta_list
+        # Make ParameterBuilder object
+        self.parameter_builder = ParameterBuilder(task=self.task, mode=self.mode)
 
         # Get loss for training
-        if loss_name is not None:
-            loss_facade = LossesFacade(self.task, self.mode, loss_name)
-            loss_parameters = LOSS_PARAMETERS[self.task][self.mode][loss_name]
-            self.criterion = loss_facade.get_loss(**loss_parameters)
+        # if loss_name is not None:
+        #     loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        #     loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+        #     self.criterion = loss_facade.get_loss(**loss_parameters)
+        # else:
+        #     raise ValueError(
+        #         f"Provide valid loss name"
+        #     )
 
         # Get metrics for training
         metric_facade = MetricsFacade(task=self.task)
-        metric_parameters = METRIC_PARAMETERS[self.task][self.mode]
+        metric_parameters = self.parameter_builder.get_metric_parameters
         self.val_metric_class = metric_facade.get_metric(mode=self.mode, **metric_parameters)
 
-        # Get optimizer
-        if optim_name is not None:
-            self.optim_name = optim_name
-
-        self.img_size_orig = img_size_orig
-        self.img_size_target = img_size_target
         self.random_seed = random_seed
         self.time = time
 
-    def get_dataloaders(self, dataset_class: Dataset = None, path_to_dataset: str = None,
-                        data_file: np.ndarray = None, batch_size: int = 1, is_train: bool = True,
-                        label_colors: dict = None, workers: int = 1, shuffle: bool = False,
-                        augs: bool = False) -> DataLoader:
+        if self.task == 'segmentation' and self.mode == 'multi':
+            self.label_colors = kwargs['label_colors']
+
+        if self.task == 'ocr':
+            self.alphabet_characters = kwargs['alphabet_characters']
+            self.alphabet_dict = {
+                self.alphabet_characters[i]: i for i in range(len(self.alphabet_characters))
+            }
+
+    def get_dataloaders(
+            self,
+            dataset_class:      Dataset = None,
+            path_to_dataset:    str = None,
+            data_file:          pd.DataFrame = None,
+            batch_size:         int = 1,
+            is_train:           bool = True,
+            workers:            int = 1,
+            shuffle:            bool = False,
+            common_augs              = None,
+            train_time_augs          = None
+    ) -> DataLoader:
         """ Function to make train data loaders
 
         :param dataset_class:   Dataset class
@@ -169,10 +182,10 @@ class Pipeline(AbstractPipeline):
         :param data_file:       Data file
         :param batch_size:      Size of data minibatch
         :param is_train:        Flag to specify dataloader type (train or test)
-        :param label_colors:    Colors for labeling for multiclass segmentation
         :param workers:         Number of multithread workers
         :param shuffle:         Flag for random shuffling train dataloader samples
-        :param augs:            Flag to add augmentations
+        :param common_augs:     Augmentations common for all images
+        :param train_time_augs: Augmentations of train images to make bofore model input
         :return:
         """
 
@@ -183,50 +196,55 @@ class Pipeline(AbstractPipeline):
             )
         if (self.task == 'segmentation') \
                 and (self.mode == 'multi') \
-                and (label_colors is None):
+                and (is_train) \
+                and (self.label_colors is None):
             raise ValueError(
                 f"Provide label_colors for multiclass segmentation task!"
             )
 
-        if augs:
-            augmentations = Augmentations(is_train).transform
-        else:
-            augmentations = None
-
         if dataset_class is None:
             # ToDo: make input parameters for dataset universal
             if self.task == 'detection':
-                dataset_parameters = dict(
-                    root=path_to_dataset,
-                    labels_file=os.path.join(path_to_dataset, 'labels.csv'),
-                    initial_size=self.img_size_orig,
-                    model_input_size=self.img_size_target,
-                    train=is_train,
-                    augmentations=augmentations
+                raise NotImplementedError(
+                    f"Detection not implemented"
                 )
             else:
                 dataset_parameters = dict(
                     data_path=path_to_dataset,
                     data_file=data_file,
                     train=is_train,
-                    label_colors=label_colors,
-                    initial_size=self.img_size_orig,
-                    model_input_size=self.img_size_target,
-                    augmentations=augmentations
+                    common_augs=common_augs,
+                    train_time_augs=train_time_augs
                 )
+
+            if self.task == 'segmentation' and self.mode == 'multi':
+                dataset_parameters['label_colors'] = self.label_colors
+            elif self.task == 'ocr':
+                dataset_parameters['alphabet'] = self.alphabet_characters
+
             facade_class = DatasetFacade(task=self.task, mode=self.mode)
             dataset_class = facade_class.get_dataset_class(**dataset_parameters)
 
-        dataloader = DataLoader(dataset_class,
-                                batch_size=batch_size,
-                                shuffle=shuffle,
-                                num_workers=workers,
-                                collate_fn=dataset_class.collate_fn)
+        dataloader = DataLoader(
+            dataset=dataset_class,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=workers,
+            collate_fn=dataset_class.collate_fn
+        )
         return dataloader
 
-    def get_model(self, model_name: str = None, path_to_weights: str = None, save_path: str = None,
-                  device_ids: list = None, cudnn_bench: bool = False,  verbose: bool = False,
-                  model_parameters: dict = None, show_model: bool = False) -> tuple:
+    def get_model(
+            self,
+            model_name:         str = None,
+            path_to_weights:    str = None,
+            save_path:          str = None,
+            device_ids:         list = None,
+            cudnn_bench:        bool = False,
+            verbose:            bool = False,
+            model_parameters:   dict = None,
+            show_model:         bool = False
+    ) -> tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
@@ -250,17 +268,16 @@ class Pipeline(AbstractPipeline):
         # Get model parameters
         if path_to_weights is None:
             if model_parameters is None:
-                model_parameters = MODEL_PARAMETERS[self.task][self.mode][model_name]
+                model_parameters = self.parameter_builder.get_model_parameters(model_name)
                 print(
                     f'Pretrained weights are not provided. '
                     f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
                 )
 
             # Get model class
-            facade = ModelsFacade(task=self.task, model_name=model_name)
-            model = facade.get_model(**model_parameters)
+            model_facade = ModelsFacade(task=self.task, model_name=model_name)
+            model = model_facade.get_model(**model_parameters)
         else:
-
             if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
@@ -318,19 +335,31 @@ class Pipeline(AbstractPipeline):
                 summary_device = 'cpu' if self.allocate_on == 'cpu' else 'cuda'
                 summary(
                     model=model,
-                    input_size=(3, self.img_size_target, self.img_size_target),
+                    input_size=(3, 256, 256),
                     device=summary_device
                 )
 
         return model, initial_parameters, model_parameters
 
-    def find_lr(self, model: nn.Module, dataloader: DataLoader, lr_reduce_factor: int = 1,
-                verbose: int = 1, show_graph: bool = True, init_value: float = 1e-8,
-                final_value: float = 10., beta: float = 0.98) -> float:
+    def find_lr(
+            self,
+            model:              nn.Module,
+            dataloader:         DataLoader,
+            loss_name:          str,
+            optim_name:         str,
+            lr_reduce_factor:   int = 1,
+            verbose:            int = 1,
+            show_graph:         bool = True,
+            init_value:         float = 1e-8,
+            final_value:        float = 10.,
+            beta:               float = 0.98
+    ) -> float:
         """ Function find optimal learning rate for the given model and parameters
 
         :param model:               Input model
-        :param dataloader:          Input data loader
+        :param dataloader:          Dataloader
+        :param loss_name:           Loss name. Depends on given task.
+        :param optim_name:          Name of the model optimizer
         :param lr_reduce_factor:    Factor to
         :param verbose:             Flag to show output information
         :param show_graph:          Flag to showing graphic
@@ -340,12 +369,15 @@ class Pipeline(AbstractPipeline):
         :return:
         """
         # Get optimizer
-        optimizer_dict = dict(
-            adam=optimizers.Adam(model.parameters(), lr=0.5, weight_decay=0.000001),
-            rmsprop=optimizers.RMSprop(model.parameters(), lr=0.5),
-            sgd=optimizers.SGD(model.parameters(), lr=0.5, nesterov=True, momentum=0.9)
+        optimizer_parameters = self.parameter_builder.get_optimizer_parameters(
+            optimizer_name=optim_name
         )
-        optimizer = optimizer_dict[self.optim_name]
+        optimizer = OPTIMIZERS[optim_name](**optimizer_parameters)
+
+        # Get criterion
+        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+        criterion = loss_facade.get_loss(**loss_parameters)
 
         # Set initial parameters
         num = len(dataloader) - 1
@@ -374,43 +406,36 @@ class Pipeline(AbstractPipeline):
                     )
                 else:  # self.task == 'classification'
                     targets = model_utils.cuda(data[1], self.allocate_on)
-
+            # Set gradients to zero
             optimizer.zero_grad()
-            preds = model(inputs)
-
-            loss = self.criterion(preds, targets)
-
+            # Make prediction
+            outputs = model(inputs)
+            # Calculate loss
+            loss = criterion(outputs, targets)
             # Compute the smoothed loss
             avg_loss = beta * avg_loss + (1 - beta) * loss.data.item()
             smoothed_loss = avg_loss / (1 - beta ** batch_num)
-
             # Stop if the loss is exploding
             if batch_num > 1 and smoothed_loss > 4 * best_loss:
-                # return lr_dict
                 break
-
             # Record the best loss
             if smoothed_loss < best_loss or batch_num == 1:
                 best_loss = smoothed_loss
-
             # Store the values
             lr_dict[np.log10(lr)] = smoothed_loss
-
             # Do the optimizer step
             loss.backward()
             optimizer.step()
-
             # Update the lr for the next step
             lr *= mult
             optimizer.param_groups[0]['lr'] = lr
-
         del model, optimizer
         gc.collect()
-
         # Find optimum learning rate
         min_lr = 10 ** min(lr_dict, key=lr_dict.get)
-        print(min_lr)
         opt_lr = min_lr / lr_reduce_factor
+
+        # Show info if verbose == 1
         if verbose == 1:
             print(f'Current learning rate: {opt_lr:.10f}')
             # Show graph if necessary
@@ -418,18 +443,36 @@ class Pipeline(AbstractPipeline):
                 m = -5
                 plt.plot(list(lr_dict.keys())[10:m], list(lr_dict.values())[10:m])
                 plt.show()
+
         return opt_lr
 
-    def train(self, model: nn.Module, lr: float, train_loader: DataLoader, val_loader: DataLoader,
-              metric_names: list, best_measure: float, first_step: int = 0, first_epoch: int = 0,
-              chp_metric: str = 'loss', n_epochs: int = 1, n_best: int = 1, scheduler: str = 'rop',
-              patience: int = 10, save_dir: str = '') -> nn.Module:
+    def train(
+            self,
+            model:          nn.Module,
+            lr:             float,
+            train_loader:   DataLoader,
+            val_loader:     DataLoader,
+            loss_name:      str,
+            optim_name:     str,
+            metric_names:   list,
+            best_measure:   float,
+            first_step:     int = 0,
+            first_epoch:    int = 0,
+            chp_metric:     str = 'loss',
+            n_epochs:       int = 1,
+            n_best:         int = 1,
+            scheduler:      str = 'rop',
+            patience:       int = 10,
+            save_dir:       str = ''
+    ) -> nn.Module:
         """ Training pipeline function
 
         :param model:           Input model
         :param lr:              Initial learning rate
         :param train_loader:    Train dataloader
         :param val_loader:      Validation dataloader
+        :param loss_name:       Loss name. Depends on given task.
+        :param optim_name:      Name of the model optimizer
         :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
         :param best_measure:    Best value of the used criterion
         :param first_step:      Initial step (number of batch)
@@ -446,19 +489,30 @@ class Pipeline(AbstractPipeline):
         """
 
         # Get optimizer
-        # ToDo: make optimizer in the get_model method
-        optimizer_dict = dict(
-            adam=optimizers.Adam(model.parameters(), lr=lr, weight_decay=0.00001),
-            rmsprop=optimizers.RMSprop(model.parameters(), lr=lr),
-            sgd=optimizers.SGD(model.parameters(), lr=lr, nesterov=True, momentum=0.9)
+        optimizer_parameters = self.parameter_builder.get_optimizer_parameters(
+            optimizer_name=optim_name
         )
-        optimizer = optimizer_dict[self.optim_name]
+        optimizer = OPTIMIZERS[optim_name](
+            params=model.parameters(),
+            lr=lr,
+            **optimizer_parameters
+        )
+
+        # Get criterion
+        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+        criterion = loss_facade.get_loss(**loss_parameters)
 
         # Get learning rate scheduler policy
         if scheduler == 'rop':
             mode = 'min' if chp_metric in ['loss'] else 'max'
-            scheduler = ReduceLROnPlateau(optimizer, mode=mode, factor=0.5,
-                                          patience=int(patience / 2), verbose=True)
+            scheduler = ReduceLROnPlateau(
+                optimizer=optimizer,
+                mode=mode,
+                factor=0.5,
+                patience=int(patience / 2),
+                verbose=True
+            )
         else:
             raise ValueError(
                 'Wrong scheduler parameter: {}. Should be "rop"'.format(scheduler)
@@ -494,6 +548,14 @@ class Pipeline(AbstractPipeline):
                             model_utils.cuda(loc_targets, self.allocate_on),
                             model_utils.cuda(cls_targets, self.allocate_on)
                         )
+                    elif self.task == 'ocr':
+                        targets_text = data[1]
+                        target_lengths = data[2]
+                        targets = (
+                            inputs,
+                            targets_text,
+                            model_utils.cuda(target_lengths, self.allocate_on)
+                        )
                     else:  # self.task == 'classification'
                         targets = model_utils.cuda(data[1], self.allocate_on)
 
@@ -502,7 +564,7 @@ class Pipeline(AbstractPipeline):
                 # Make prediction
                 outputs = model(inputs)
                 # Calculate loss
-                loss = self.criterion(outputs, targets)
+                loss = criterion(outputs, targets)
                 losses.append(loss.item())
                 loss.backward()
                 # Make optimizer step
@@ -512,25 +574,24 @@ class Pipeline(AbstractPipeline):
                 tq.update(inputs.shape[0])
                 train_loss = np.mean(losses)
                 tq.set_postfix(loss='{:.5f}'.format(train_loss))
-
             # Close progress bar after epoch
             tq.close()
             del tq
             gc.collect()
-
             # Calculate validation metrics
             val_metrics = self.validation(
-                model=model, dataloader=val_loader, metric_names=metric_names
+                model=model,
+                dataloader=val_loader,
+                loss_name=loss_name,
+                metric_names=metric_names
             )
-
             # Write epoch parameters to log file
             model_utils.write_event(log_file, first_step, e, **val_metrics)
-            val_loss = val_metrics['loss']
-
             # Make scheduler step
             if scheduler:
-                scheduler.step(val_metrics[chp_metric])
-
+                scheduler.step(
+                    metrics=val_metrics[chp_metric]
+                )
             # Save weights if best
             if chp_metric in ['loss']:
                 measure = 1 / val_metrics[chp_metric]
@@ -560,7 +621,10 @@ class Pipeline(AbstractPipeline):
                 torch.save(state_dict, best_weights_name)
 
             # Stop training if early stop criterion
-            if model_utils.early_stop(early_stop_measure, patience=patience, mode=early_stop_mode):
+            stop_criterion = model_utils.early_stop(
+                    metric=early_stop_measure, patience=patience, mode=early_stop_mode
+            )
+            if stop_criterion:
                 print('Early stopping')
                 break
 
@@ -569,20 +633,26 @@ class Pipeline(AbstractPipeline):
         model_utils.remove_all_but_n_best(
             weights_dir=save_weights_path, n_best=n_best, reverse=reverse
         )
-
         # Load best model weights
         model.load_state_dict(best_model_wts)
 
         return model
 
-    def validation(self, model: nn.Module, dataloader: DataLoader, metric_names: list,
-                   verbose: int = 1) -> dict:
+    def validation(
+            self,
+            model:          nn.Module,
+            dataloader:     DataLoader,
+            loss_name:      str,
+            metric_names:   list,
+            verbose:        int = 1
+    ) -> dict:
         """ Function to make validation of the model
 
-        :param model: Input model to validate
-        :param dataloader: Validation dataloader
-        :param metric_names:
-        :param verbose: Flag to include output information
+        :param model:           Input model to validate
+        :param dataloader:      Validation dataloader
+        :param loss_name:       Loss name. Depends on given task.
+        :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param verbose:         Flag to include output information
         :return:
         """
         model.eval()
@@ -591,9 +661,15 @@ class Pipeline(AbstractPipeline):
         for m_name in metric_names:
             metric_values[m_name] = list()
 
+        # Get criterion
+        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+        criterion = loss_facade.get_loss(**loss_parameters)
+
         with torch.no_grad():
             for data in dataloader:
                 inputs = model_utils.cuda(data[0], self.allocate_on)
+                # Make targets for tasks
                 if self.task == 'segmentation':
                     targets = model_utils.cuda(data[1], self.allocate_on)
                 elif self.task == 'detection':
@@ -603,16 +679,22 @@ class Pipeline(AbstractPipeline):
                         model_utils.cuda(loc_target, self.allocate_on),
                         model_utils.cuda(cls_target, self.allocate_on)
                     )
+                elif self.task == 'ocr':
+                    targets_text = data[1]
+                    target_lengths = data[2]
+                    targets = (
+                        inputs,
+                        targets_text,
+                        model_utils.cuda(target_lengths, self.allocate_on)
+                    )
                 else:  # self.task == 'classification':
                     targets = model_utils.cuda(data[1], self.allocate_on)
 
                 # Make predictions
                 outputs = model(inputs)
-
                 # Calculate loss
-                loss = self.criterion(outputs, targets)
+                loss = criterion(outputs, targets)
                 losses.append(loss.item())
-
                 # Get parameters for metrics calculation function
                 if self.task == 'segmentation':
                     get_metric_parameters = dict(
@@ -624,9 +706,14 @@ class Pipeline(AbstractPipeline):
                 elif self.task == 'detection':
                     # TODO implement detection metric
                     raise NotImplementedError
+                elif self.task == 'ocr':
+                    get_metric_parameters = dict(
+                        trues=targets, preds=outputs
+                    )
                 else:  # self.task == 'classification'
-                    get_metric_parameters = dict(trues=targets, preds=outputs)
-
+                    get_metric_parameters = dict(
+                        trues=targets, preds=outputs
+                    )
                 # Calculate metrics for the batch of images
                 for m_name in metric_names:
                     metric_values[m_name] += [
@@ -634,29 +721,36 @@ class Pipeline(AbstractPipeline):
                             metric_name=m_name, **get_metric_parameters
                         )
                     ]
-
         # Calculate mean metrics for all images
         out_metrics = dict()
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
         for m_name in metric_names:
             out_metrics[m_name] = np.mean(metric_values[m_name]).astype(np.float64)
-
         # Show information if needed
         if verbose == 1:
             string = ''
             for key, value in out_metrics.items():
                 string += '{}: {:.5f} '.format(key, value)
             print(string)
+
         return out_metrics
 
-    def predict(self, model: nn.Module, dataloader: DataLoader, save: bool = False,
-                save_dir: str = '', **kwargs) -> pd.DataFrame:
+    def predict(
+            self,
+            model:      nn.Module,
+            dataloader: DataLoader,
+            save:       bool = False,
+            save_dir:   str = '',
+            tta_list:   list = None,
+            **kwargs
+    ) -> pd.DataFrame:
         """ Function to make predictions
 
         :param model:       Input model
         :param dataloader:  Test dataloader
         :param save:        Flag to save results
         :param save_dir:    Path to save results
+        :param tta_list:    List of the test-time augmentations
         :return:
         """
         model.eval()
@@ -670,6 +764,8 @@ class Pipeline(AbstractPipeline):
             predictions['scores'] = []
         elif self.task == 'segmentation':
             predictions['masks'] = None
+        elif self.task == 'ocr':
+            predictions['labels'] = []
         else:  # self.task == 'classification'
             predictions['labels'] = None
 
@@ -683,77 +779,94 @@ class Pipeline(AbstractPipeline):
 
                 # Get predictions for detection task
                 if self.task == 'detection':
-                    cls_thresh = kwargs['cls_thresh']
-                    nms_thresh = kwargs['nms_thresh']
-                    # TODO Make this work with different models (currently - only RetinaNet)
-                    outputs = model(inputs)
-                    encoder = DataEncoder(input_size=self.img_size_target)
-                    loc_preds = outputs[0]
-                    cls_preds = outputs[1]
-                    for loc, cls, name in zip(loc_preds, cls_preds, names):
-                        preds = encoder.decode(loc.data.cpu().squeeze(),
-                                               cls.data.cpu().squeeze(),
-                                               cls_thresh=cls_thresh,
-                                               nms_thresh=nms_thresh)
-                        if preds is not None:
-                            boxes, labels, scores = preds[0], preds[1], preds[2]
-                            boxes = boxes.data.cpu().numpy().astype(np.uint8)
-                            boxes = resize_bboxes(boxes=boxes, size_from=self.img_size_target,
-                                                  size_to=max(self.img_size_orig))
-                            boxes = unpad_bboxes(boxes=boxes, img_shape=self.img_size_orig)
-                            labels = labels.data.cpu().numpy()
-                            scores = scores.data.cpu().numpy()
+                    raise NotImplementedError(
+                        f"Detection task not implemented"
+                    )
+                    # TODO REFACTOR!!!
+                    # cls_thresh = kwargs['cls_thresh']
+                    # nms_thresh = kwargs['nms_thresh']
+                    # outputs = model(inputs)
+                    # encoder = DataEncoder(input_size=self.img_size_target)
+                    # loc_preds = outputs[0]
+                    # cls_preds = outputs[1]
+                    # for loc, cls, name in zip(loc_preds, cls_preds, names):
+                    #     preds = encoder.decode(loc.data.cpu().squeeze(),
+                    #                            cls.data.cpu().squeeze(),
+                    #                            cls_thresh=cls_thresh,
+                    #                            nms_thresh=nms_thresh)
+                    #     if preds is not None:
+                    #         boxes, labels, scores = preds[0], preds[1], preds[2]
+                    #         boxes = boxes.data.cpu().numpy().astype(np.uint8)
+                    #         boxes = resize_bboxes(boxes=boxes, size_from=self.img_size_target,
+                    #                               size_to=max(self.img_size_orig))
+                    #         boxes = unpad_bboxes(boxes=boxes, img_shape=self.img_size_orig)
+                    #         labels = labels.data.cpu().numpy()
+                    #         scores = scores.data.cpu().numpy()
+                    #
+                    #         # Sort boxes, labels and scores on x-coord
+                    #         preds = [(box, label, score) for box, label, score in zip(boxes,
+                    #                                                                   labels,
+                    #                                                                   scores)]
+                    #         preds = np.asarray(sorted(preds, key=lambda x: x[0][0]))
+                    #         predictions['boxes'].append(np.asarray([pred[0] for pred in preds]))
+                    #         predictions['labels'].append(np.asarray([pred[1] for pred in preds]))
+                    #         predictions['scores'].append(np.asarray([pred[2] for pred in preds]))
+                    #     else:
+                    #         predictions['boxes'].append([])
+                    #         predictions['labels'].append([])
+                    #         predictions['scores'].append([])
 
-                            # Sort boxes, labels and scores on x-coord
-                            preds = [(box, label, score) for box, label, score in zip(boxes,
-                                                                                      labels,
-                                                                                      scores)]
-                            preds = np.asarray(sorted(preds, key=lambda x: x[0][0]))
-                            predictions['boxes'].append(np.asarray([pred[0] for pred in preds]))
-                            predictions['labels'].append(np.asarray([pred[1] for pred in preds]))
-                            predictions['scores'].append(np.asarray([pred[2] for pred in preds]))
-                        else:
-                            predictions['boxes'].append([])
-                            predictions['labels'].append([])
-                            predictions['scores'].append([])
-
-                # Get predictions for binary segmentation
+                # Get predictions for segmentation task
                 elif self.task == 'segmentation':
+                    # Get predictions for binary segmentation
                     if self.mode == 'binary':
+                        # Make predictions with Test-Time Augmentations
                         tta_stack = []
-                        for tta_class in self.tta_list:
+                        for tta_class in tta_list:
                             tta_operation = tta_class(allocate_on=self.allocate_on)
                             tta_out = tta_operation(model, inputs)
                             tta_stack.append(tta_out)
                         tta_stack = np.squeeze(np.mean(tta_stack, axis=0), 1)
-
                         if predictions['masks'] is None:
                             predictions['masks'] = tta_stack
                         else:
                             predictions['masks'] = np.append(predictions['masks'], tta_stack, 0)
 
-                    # Get predictions for multiclass segmentation task
+                    # Get predictions for multiclass segmentation
                     else:  # self.mode == 'multi'
                         outputs = model(inputs)
                         outputs = torch.softmax(outputs, dim=1)
                         out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1).astype(np.float32)
-
                         if predictions['masks'] is None:
                             predictions['masks'] = out_masks
                         else:
                             predictions['masks'] = np.append(predictions['masks'], out_masks, 0)
 
+                # Get predictions for ocr
+                elif self.task == 'ocr':
+                    outputs = model(inputs)
+                    log_preds = F.log_softmax(outputs, dim=2)
+                    converter = LabelConverter(
+                        alphabet=self.alphabet_characters,
+                        ignore_case=False
+                    )
+                    preds = converter.best_path_decode(log_preds, strings=False)
+                    for pred in preds:
+                        predictions['labels'].append(pred)
+
                 # Get predictions for classification task
                 else:  # self.mode == 'classification'
+                    # Get predictions for binary classification
                     if self.mode == 'binary':
                         outputs = model(inputs)
                         outputs = torch.sigmoid(outputs)
                         preds = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
-                        # print('prediction.outputs', preds, preds.shape)
                         if predictions['labels'] is None:
                             predictions['labels'] = preds
                         else:
                             predictions['labels'] = np.append(predictions['labels'], preds, 0)
+
+                    # Get predictions for multiclass classification
                     else:  # self.mode == 'multi'
                         outputs = model(inputs)
                         outputs = torch.softmax(outputs, dim=-1)
@@ -773,6 +886,8 @@ class Pipeline(AbstractPipeline):
         elif self.task == 'segmentation':
             masks = [msk for msk in predictions['masks']]
             pred_df['masks'] = masks
+        elif self.task == 'ocr':
+            pred_df['labels'] = predictions['labels']
         else:  # self.task == 'classification'
             pred_df['labels'] = predictions['labels']
 
@@ -781,14 +896,21 @@ class Pipeline(AbstractPipeline):
             csv_path = os.path.join(save_dir, r'{}.csv'.format(self.time))
             pred_df.to_csv(path_or_buf=csv_path, sep=';')
             print("Predictions saved. Path: {}".format(csv_path))
+
         return pred_df
 
-    def postprocessing(self, pred_df: pd.DataFrame, threshold: (list, float) = 0.,
-                       hole_size: int = None, obj_size: int = None, save: bool = False,
-                       save_dir: str = '') -> pd.DataFrame:
+    def postprocessing(
+            self,
+            pred_df:    pd.DataFrame,
+            threshold:  (list, float) = 0.,
+            hole_size:  int = None,
+            obj_size:   int = None,
+            save:       bool = False,
+            save_dir:   str = ''
+    ) -> pd.DataFrame:
         """ Function for predicted data postprocessing
 
-        :param pred_df:     Dataset woth predicted images and masks
+        :param pred_df:     Dataset with predicted images and masks
         :param threshold:   Binarization thresholds
         :param hole_size:   Minimum hole size to fill
         :param obj_size:    Minimum obj size
@@ -849,24 +971,31 @@ class Pipeline(AbstractPipeline):
 
         return pred_df
 
-    def evaluate_metrics(self, true_df: pd.DataFrame, pred_df: pd.DataFrame,
-                         ignore_class: int = None, label_colors: dict = None,
-                         iou_thresholds: list = None, metric_names: list = None,
-                         verbose: int = 1) -> dict:
+    def evaluate_metrics(
+            self,
+            true_df:        pd.DataFrame,
+            pred_df:        pd.DataFrame,
+            ignore_class:   int = None,
+            iou_thresholds: list = None,
+            metric_names:   list = None,
+            verbose:        int = 1
+    ) -> dict:
         """ Common function to evaluate metrics
 
         :param true_df:
         :param pred_df:
         :param ignore_class:
-        :param label_colors:
         :param iou_thresholds:
         :param metric_names:
         :param verbose:
         :return:
         """
 
+        # Get metrics for detection task
         if self.task == 'detection':
             out_metrics = mean_ap(true_df=true_df, pred_df=pred_df, iou_thresholds=iou_thresholds)
+
+        # Get metrics for segmentation task
         elif self.task == 'segmentation':
             if metric_names is None:
                 raise ValueError(
@@ -877,6 +1006,7 @@ class Pipeline(AbstractPipeline):
             masks_t = np.asarray([mask for mask in all_df['masks_true'].values])
             masks_p = np.asarray([mask for mask in all_df['masks_pred'].values])
 
+            # Get metrics for binary segmentation
             if self.mode == 'binary':
                 out_metrics = dict()
                 for m_name in metric_names:
@@ -890,18 +1020,18 @@ class Pipeline(AbstractPipeline):
                         for m_k, m_v in v.items():
                             print(f'- best {m_k}: {m_v:.5f}')
 
+            # Get metrics for multiclass segmentation
             else:  # self.mode == 'multi'
+                if self.label_colors is None:
+                    raise ValueError(
+                        f"Provide label_colors for multiclass segmentation task!"
+                    )
                 out_metrics = dict()
-                colors = label_colors
-                for i, (class_name, class_color) in enumerate(colors.items()):
+                for i, (class_name, class_color) in enumerate(self.label_colors.items()):
                     if i == ignore_class:
                         continue
                     class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
                     class_masks_p = masks_p[..., i + 1]
-
-                    # for img_idx in range(0, 10):
-                    #     draw_images([class_masks_t[img_idx, ...], class_masks_p[img_idx, ...]])
-
                     out_metrics[class_name] = dict()
                     for m_name in metric_names:
                         threshold, metric_value = get_opt_threshold(
@@ -920,6 +1050,43 @@ class Pipeline(AbstractPipeline):
                             for m_k, m_v in v.items():
                                 print(f'- best {m_k}: {m_v:.5f}')
 
+        # Get metrics for ocr task
+        elif self.task == 'ocr':
+            all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
+
+            names = all_df['names'].values
+            labels_t_ = [l.replace(' ', '') for l in all_df['labels_true'].values]
+            labels_t = []
+            for label_t_ in labels_t_:
+                out_label = []
+                for i in range(len(label_t_)):
+                    char = label_t_[i]
+                    out_label.append(self.alphabet_dict[char])
+                labels_t.append(out_label)
+
+            labels_p = all_df['labels_pred'].values
+            labels_p_ = []
+            for i, label_p in enumerate(labels_p):
+                label_p_ = ''
+                for char in label_p:
+                    for k, v in self.alphabet_dict.items():
+                        if char == v:
+                            label_p_ += k
+                labels_p_.append(label_p_)
+
+            for name, label_t_, label_p_ in zip(names, labels_t_, labels_p_):
+                images_dir = r'/home/ido-mts/Work/Projects/task_numbers_recognition/cs_scripts_numbers_recognition/data/ocr/real/holdout/images'
+                image = cv2.imread(os.path.join(images_dir, name))
+                if label_t_ != label_p_:
+                    print(f'True: {label_t_}\nPred: {label_p_}')
+                    draw_images([image])
+
+            out_metrics = dict()
+            for m_name in metric_names:
+                out_metrics[m_name] = self.val_metric_class.get_metric_value(
+                    labels_t, labels_p, m_name
+                )
+
         else:  # self.task == 'classification'
             all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
             labels_t = all_df['labels_true'].values.astype(np.uint8)
@@ -932,27 +1099,34 @@ class Pipeline(AbstractPipeline):
 
         return out_metrics
 
-    def visualize_preds(self, preds_df: pd.DataFrame, images_path: str):
+    def visualize_preds(
+            self,
+            preds_df:       pd.DataFrame,
+            images_path:    str
+    ):
         """ Function for simple visualization
 
-        :param preds_df: Dataframe with predicted images
+        :param preds_df:    Dataframe with predicted images
         :param images_path: Path to images
         :return:
         """
         # Get visualization for detection task
         if self.task == 'detection':
-            for row in preds_df.iterrows():
-                name = row[1]['names']
-                boxes = row[1]['boxes'].tolist()
-                labels = row[1]['labels']
-                scores = row[1]['scores']
-                image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
-                                   dtype=np.uint8)
-                h_i, w_i = image.shape[0], image.shape[1]
-                h, w = self.img_size_orig
-                if h != h_i and w != w_i:
-                    image = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
-                draw_image_boxes(image, boxes, labels, scores)
+            # ToDo: refactor detection line
+            pass
+
+            # for row in preds_df.iterrows():
+            #     name = row[1]['names']
+            #     boxes = row[1]['boxes'].tolist()
+            #     labels = row[1]['labels']
+            #     scores = row[1]['scores']
+            #     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
+            #                        dtype=np.uint8)
+            #     h_i, w_i = image.shape[0], image.shape[1]
+            #     h, w = self.img_size_orig
+            #     if h != h_i and w != w_i:
+            #         image = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
+            #     draw_image_boxes(image, boxes, labels, scores)
 
         elif self.task == 'segmentation':
             # Get visualization for binary segmentation task
@@ -962,9 +1136,9 @@ class Pipeline(AbstractPipeline):
                     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)), dtype=np.uint8)
                     mask = row[1]['masks']
 
-                    # msk_img = np.copy(image)
-                    # matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
-                    # msk_img[matching, :] = [0, 0, 0]
+                    msk_img = np.copy(image)
+                    matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
+                    msk_img[matching, :] = [0, 0, 0]
                     draw_images([image, mask], orient='vertical')
 
             # Get visualization for multiclass segmentation task

@@ -10,24 +10,32 @@ from ... import dirs
 from ..pipeline_class import Pipeline
 
 
-def prediction(model: nn.Module, pipeline: Pipeline, dataset_class=None, data_path: str = None,
-               batch_size: int = 1, workers: int = 1, threshold: (list, float) = None,
-               postprocess: bool = False, output_path: str = '', show_preds: bool = False,
-               save_preds: bool = False, **kwargs):
+def prediction(
+        model: nn.Module,
+        pipeline: Pipeline,
+        dataloaders: dict,
+        data_path: str = None,
+        tta_list: list = None,
+        threshold: (list, float) = None,
+        postprocess: bool = False,
+        show_preds: bool = False,
+        save_preds: bool = False,
+        output_path: str = '',
+        **kwargs
+):
     """ Inference process
 
-    :param model: Model class
-    :param pipeline: Pipeline class
-    :param dataset_class: Custom dataset class
-    :param data_path: Path to images to predict
-    :param batch_size: Size of the data minibatch
-    :param workers: Number of subprocesses to use for data loading
-    :param threshold: Threshold to binarize predictions
-    :param postprocess: Flag for predictions postprocessing
-    :param save_preds: Flag to save predictions
-    :param output_path: Path to save predictions
-    :param show_preds: Flag to show predictions
-    :param kwargs: Dict of keyword arguments
+    :param model:           Model class
+    :param pipeline:        Pipeline class
+    :param dataloaders:     Dataloaders dict
+    :param data_path:       Path to images to predict
+    :param tta_list:        Test-time augmentations
+    :param threshold:       Threshold to binarize predictions
+    :param postprocess:     Flag for predictions postprocessing
+    :param show_preds:      Flag to show predictions
+    :param save_preds:      Flag to save predictions
+    :param output_path:     Path to save predictions
+    :param kwargs:          Dict of keyword arguments
     :return:
     """
     task = pipeline.task
@@ -39,20 +47,13 @@ def prediction(model: nn.Module, pipeline: Pipeline, dataset_class=None, data_pa
         cls_thresh = None
         nms_thresh = None
 
-    test_loader = pipeline.get_dataloaders(
-        dataset_class=dataset_class,
-        path_to_dataset=data_path,
-        batch_size=batch_size,
-        is_train=False,
-        workers=workers,
-        shuffle=False,
-        augs=False
-    )
+    test_loader = dataloaders['test_dataloader']
     test_pred_df = pipeline.predict(
         model=model,
         dataloader=test_loader,
         cls_thresh=cls_thresh,
-        nms_thresh=nms_thresh
+        nms_thresh=nms_thresh,
+        tta_list=tta_list
     )
 
     del test_loader
@@ -80,3 +81,11 @@ def prediction(model: nn.Module, pipeline: Pipeline, dataset_class=None, data_pa
                 top_dir=output_path
             )
             test_pred_df.to_csv(path_or_buf=os.path.join(out_path, f"preds.csv"), index=False)
+
+    if task == 'ocr':
+        if postprocess:
+            test_pred_df = pipeline.postprocessing(
+                pred_df=test_pred_df,
+                save=save_preds,
+                save_dir=output_path
+            )

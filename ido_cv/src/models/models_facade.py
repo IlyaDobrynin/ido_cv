@@ -8,6 +8,24 @@ from . import deeplabv3
 from . import fpn_factory
 from . import classification_factory
 from . import retinanet
+from . import crnn
+
+models_dict = {
+    'classification': {
+        'basic_model': classification_factory.ClassifierFactory
+    },
+    'segmentation': {
+        'unet': unet_factory.UnetFactory,
+        'fpn': fpn_factory.FPNFactory,
+        'deeplabv3': deeplabv3.DeepLabV3
+    },
+    'detection': {
+        'retinanet': retinanet.RetinaNet
+    },
+    'ocr': {
+        'crnn': crnn.CRNN
+    }
+}
 
 
 class ModelsFacade:
@@ -23,39 +41,21 @@ class ModelsFacade:
     """
     def __init__(self, task: str, model_name: str):
 
-        if task == 'classification':
-            if model_name == 'basic_model':
-                self.__model_class = classification_factory.ClassifierFactory
-            else:
-                raise ValueError(
-                    f"Wrong parameter model_name: {model_name}. "
-                    f"Should be 'basic_model'."
-                )
-        elif task == 'segmentation':
-            if model_name == 'unet':
-                self.__model_class = unet_factory.UnetFactory
-            elif model_name == 'fpn':
-                self.__model_class = fpn_factory.FPNFactory
-            elif model_name == 'deeplabv3':
-                self.__model_class = deeplabv3.DeepLabV3
-            else:
-                raise ValueError(
-                    f"Wrong parameter model_name: {model_name}. "
-                    f"Should be 'unet', 'fpn' or 'deeplabv3'."
-                )
-        elif task == 'detection':
-            if model_name in ['retinanet']:
-                self.__model_class = retinanet.RetinaNet
-            else:
-                raise ValueError(
-                    f"Wrong parameter model_name: {model_name}. "
-                    f"Should be 'retinanet'."
-                )
-        else:
+        tasks = models_dict.keys()
+        if task not in tasks:
             raise ValueError(
-                f"Wrong parameter task: {task}. "
-                f"Should be 'classification', 'segmentation' or 'detection'."
+                f"Wrong task parameter: {task}. "
+                f"Should be: {[t for t in tasks]}"
             )
+
+        model_names = models_dict[task].keys()
+        if model_name not in model_names:
+            raise ValueError(
+                f"Wrong task parameter: {model_name}. "
+                f"For {task} should be: {[m for m in model_names]}"
+            )
+
+        self.__model_class = models_dict[task][model_name]
 
     @property
     def get_model(self):
