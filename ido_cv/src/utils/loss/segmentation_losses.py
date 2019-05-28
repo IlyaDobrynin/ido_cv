@@ -181,6 +181,8 @@ class MultiBceMetric(nn.Module):
             else:
                 loss += bce_loss
 
+            loss *= cls_weight
+
         if self.ignore_class is not None:
             ignore = 1
         else:
