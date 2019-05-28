@@ -40,6 +40,15 @@ class BinaryBceMetric(nn.Module):
         else:
             weights = None
 
+        # from ..image_utils import draw_images
+        # import numpy as np
+        # target_img = metric_target.data.cpu().numpy().astype(np.float32)
+        # pred_img = metric_output.data.cpu().numpy().astype(np.float32)
+        # for img_idx in range(target_img.shape[0]):
+        #     gt = np.squeeze(target_img[img_idx, ...], axis=0)
+        #     pr = np.squeeze(pred_img[img_idx, ...], axis=0)
+        #     draw_images([gt, pr])
+
         bce_loss = self.bce_loss(preds, trues)
         if self.metric:
             if self.metric == 'jaccard':

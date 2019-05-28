@@ -91,7 +91,7 @@ METRIC_PARAMETERS = {
     'segmentation': {
         'binary': dict(
             activation='sigmoid',
-            device='cpu'
+            device='gpu'
         ),
         'multi': dict(
             activation='softmax',

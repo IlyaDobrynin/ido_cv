@@ -962,9 +962,9 @@ class Pipeline(AbstractPipeline):
                     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)), dtype=np.uint8)
                     mask = row[1]['masks']
 
-                    msk_img = np.copy(image)
-                    matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
-                    msk_img[matching, :] = [0, 0, 0]
+                    # msk_img = np.copy(image)
+                    # matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
+                    # msk_img[matching, :] = [0, 0, 0]
                     draw_images([image, mask], orient='vertical')
 
             # Get visualization for multiclass segmentation task

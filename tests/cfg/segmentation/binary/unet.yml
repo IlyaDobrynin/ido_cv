@@ -6,14 +6,14 @@ pretrained: 'imagenet'
 unfreeze_encoder: True
 custom_enc_start: False
 num_input_channels: 3
-dropout_rate: 0.0
+dropout_rate: 0.2
 bn_type: 'default'
 conv_type: 'default'
 upscale_mode: 'nearest'
 depthwise: False
-residual: False
+residual: True
 mid_block:
 dilate_depth: 1
 gau: False
-hypercolumn: False
+hypercolumn: True
 se_decoder: False

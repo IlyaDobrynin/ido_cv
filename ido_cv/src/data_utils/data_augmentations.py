@@ -42,21 +42,13 @@ class Augmentations:
             RandomBrightness(limit=(0.05), p=0.5),
             RandomContrast(limit=(-0.05, 0.05), p=0.5),
             OneOf([
-                JpegCompression(quality_lower=40, quality_upper=100),
-            #     IAAAdditiveGaussianNoise(scale=(0.05 * 255, 0.1 * 255), p=0.5),
-            #     # GaussNoise(p=0.5),
+                JpegCompression(quality_lower=90, quality_upper=100),
             ], p=0.5),
-            # # OneOf([
-            #     # MotionBlur(blur_limit=3, p=0.5),
-            #     # MedianBlur(blur_limit=3, p=0.5)
-            # # ], p=0.5),
             Cutout(num_holes=500, max_h_size=2, max_w_size=2, p=0.5),
-            # ElasticTransform(sigma=1, alpha_affine=1, p=1),
-            # OpticalDistortion(distort_limit=0.2, shift_limit=0.2, p=1),
             ShiftScaleRotate(shift_limit=0.,
                              scale_limit=(-0.2, 0.2),
                              rotate_limit=5,
-                             border_mode=cv2.BORDER_CONSTANT,
+                             # border_mode=cv2.BORDER_CONSTANT,
                              interpolation=cv2.INTER_AREA,
                              p=0.5),
         ], p=self.p)

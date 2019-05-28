@@ -138,6 +138,8 @@ def numpy_metric_per_image(trues, preds, metric_name):
             metrics.append(1)
             continue
 
+        true = resize_image(image=true, size=pred.shape, interpolation=cv2.INTER_NEAREST)
+
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)
         intersection = np.sum(np.logical_and(true, pred).astype(np.uint8))
