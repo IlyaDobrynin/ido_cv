@@ -9,42 +9,38 @@ import copy
 import warnings
 from pathlib import Path
 from abc import ABC, abstractmethod
-import cv2
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from skimage.io import imsave
 from tqdm import tqdm
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from .. import dirs
 from . import allowed_parameters
-from .utils.ocr_utils import LabelConverter
 from .allowed_parameters import ParameterBuilder
-from .models.models_facade import ModelsFacade
-from .data_utils.dataset_facade import DatasetFacade
-from .utils.loss.loss_facade import LossesFacade
-from .utils.metrics.metric_facade import MetricsFacade
-from .data_utils.encoder_alt import DataEncoder
-from .utils.get_model_config import ConfigParser
+from .models import ModelFacade
+from .utils.data import DatasetFacade
+from .utils.loss import LossFacade
+from .utils.metrics import MetricFacade
+from .utils.configs import ConfigParser
 from .utils import model_utils
-from .utils.image_utils import unpad_bboxes
-from .utils.image_utils import resize_bboxes
 from .utils.image_utils import draw_images
-from .utils.image_utils import draw_image_boxes
 from .utils.image_utils import delete_small_instances
-from .utils.metric_utils import get_opt_threshold
-from .utils.metrics.detection_metrics import mean_ap
+from .utils.pipeline_utils import get_data
+from .utils.pipeline_utils import train_one_epoch
+from .utils.pipeline_utils import validate_train
+from .utils.pipeline_utils import validate_test
+from .utils.pipeline_utils import predict
 
 pd.set_option('display.max_columns', 10)
 
 TASKS_MODES = allowed_parameters.TASKS_MODES
 OPTIMIZERS = allowed_parameters.OPTIMIZERS
+TTA = allowed_parameters.TTA
 
 
 class AbstractPipeline(ABC):
@@ -69,7 +65,7 @@ class AbstractPipeline(ABC):
         pass
 
     @abstractmethod
-    def predict(self, *args, **kwargs):
+    def prediction(self, *args, **kwargs):
         pass
 
 
@@ -97,8 +93,8 @@ class Pipeline(AbstractPipeline):
             self,
             task:           str,
             mode:           str,
-            time:           str = None,
             allocate_on:    str = 'cpu',
+            time:           str = None,
             random_seed:    int = 1,
             **kwargs
     ):
@@ -136,18 +132,8 @@ class Pipeline(AbstractPipeline):
         # Make ParameterBuilder object
         self.parameter_builder = ParameterBuilder(task=self.task, mode=self.mode)
 
-        # Get loss for training
-        # if loss_name is not None:
-        #     loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
-        #     loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
-        #     self.criterion = loss_facade.get_loss(**loss_parameters)
-        # else:
-        #     raise ValueError(
-        #         f"Provide valid loss name"
-        #     )
-
         # Get metrics for training
-        metric_facade = MetricsFacade(task=self.task)
+        metric_facade = MetricFacade(task=self.task)
         metric_parameters = self.parameter_builder.get_metric_parameters
         self.val_metric_class = metric_facade.get_metric(mode=self.mode, **metric_parameters)
 
@@ -196,7 +182,7 @@ class Pipeline(AbstractPipeline):
             )
         if (self.task == 'segmentation') \
                 and (self.mode == 'multi') \
-                and (is_train) \
+                and is_train \
                 and (self.label_colors is None):
             raise ValueError(
                 f"Provide label_colors for multiclass segmentation task!"
@@ -220,7 +206,7 @@ class Pipeline(AbstractPipeline):
             if self.task == 'segmentation' and self.mode == 'multi':
                 dataset_parameters['label_colors'] = self.label_colors
             elif self.task == 'ocr':
-                dataset_parameters['alphabet'] = self.alphabet_characters
+                dataset_parameters['alphabet_dict'] = self.alphabet_dict
 
             facade_class = DatasetFacade(task=self.task, mode=self.mode)
             dataset_class = facade_class.get_dataset_class(**dataset_parameters)
@@ -241,8 +227,8 @@ class Pipeline(AbstractPipeline):
             save_path:          str = None,
             device_ids:         list = None,
             cudnn_bench:        bool = False,
-            verbose:            bool = False,
             model_parameters:   dict = None,
+            verbose:            int = 1,
             show_model:         bool = False
     ) -> tuple:
         """ Function returns model, allocated to the given gpu's
@@ -252,8 +238,8 @@ class Pipeline(AbstractPipeline):
         :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
         :param cudnn_bench: Flag to include cudnn benchmark
-        :param verbose: Flag to show info
         :param model_parameters: Path to the trained weights
+        :param verbose: Flag to show info
         :param show_model: Flag to show model
         :return:
         """
@@ -275,7 +261,7 @@ class Pipeline(AbstractPipeline):
                 )
 
             # Get model class
-            model_facade = ModelsFacade(task=self.task, model_name=model_name)
+            model_facade = ModelFacade(task=self.task, model_name=model_name)
             model = model_facade.get_model(**model_parameters)
         else:
             if not os.path.exists(path_to_weights):
@@ -306,7 +292,8 @@ class Pipeline(AbstractPipeline):
                                  for key, value in model_dict['model_weights'].items()
                                  if 'module' in key}
             else:
-                model = torch.load(str(model_class_path))
+                # print(model_class_path)
+                model = torch.load(model_class_path)
                 model_dict = torch.load(str(path_to_weights))
                 model_weights = {key.replace('module.', ''): value
                                  for key, value in model_dict['model_weights'].items()
@@ -326,7 +313,7 @@ class Pipeline(AbstractPipeline):
         # Locate model into device
         model = model_utils.allocate_model(model, device_ids=device_ids, cudnn_bench=cudnn_bench)
 
-        if verbose:
+        if verbose == 1:
             print(f'Train process runs with {model_name} parameters:')
             for param_name, param_val in model_parameters.items():
                 print(f'{param_name}: {param_val}')
@@ -372,10 +359,14 @@ class Pipeline(AbstractPipeline):
         optimizer_parameters = self.parameter_builder.get_optimizer_parameters(
             optimizer_name=optim_name
         )
-        optimizer = OPTIMIZERS[optim_name](**optimizer_parameters)
+        optimizer = OPTIMIZERS[optim_name](
+            params=model.parameters(),
+            lr=init_value,
+            **optimizer_parameters
+        )
 
         # Get criterion
-        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        loss_facade = LossFacade(task=self.task, mode=self.mode, loss_name=loss_name)
         loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
         criterion = loss_facade.get_loss(**loss_parameters)
 
@@ -393,19 +384,8 @@ class Pipeline(AbstractPipeline):
         model.train()
         for data in tqdm(dataloader):
             batch_num += 1
-
-            # Get the loss for this mini-batch of inputs/outputs
-            inputs = model_utils.cuda(data[0], self.allocate_on)
-            with torch.no_grad():
-                if self.task == 'segmentation':
-                    targets = model_utils.cuda(data[1], self.allocate_on)
-                elif self.task == 'detection':
-                    targets = (
-                        model_utils.cuda(data[1], self.allocate_on),
-                        model_utils.cuda(data[2], self.allocate_on)
-                    )
-                else:  # self.task == 'classification'
-                    targets = model_utils.cuda(data[1], self.allocate_on)
+            # Get data
+            inputs, targets = get_data(task=self.task, data=data, allocate_on=self.allocate_on)
             # Set gradients to zero
             optimizer.zero_grad()
             # Make prediction
@@ -497,13 +477,12 @@ class Pipeline(AbstractPipeline):
             lr=lr,
             **optimizer_parameters
         )
-
         # Get criterion
-        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
+        loss_facade = LossFacade(task=self.task, mode=self.mode, loss_name=loss_name)
         loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
         criterion = loss_facade.get_loss(**loss_parameters)
-
         # Get learning rate scheduler policy
+        # ToDo: make callbacks facade
         if scheduler == 'rop':
             mode = 'min' if chp_metric in ['loss'] else 'max'
             scheduler = ReduceLROnPlateau(
@@ -517,7 +496,6 @@ class Pipeline(AbstractPipeline):
             raise ValueError(
                 'Wrong scheduler parameter: {}. Should be "rop"'.format(scheduler)
             )
-
         # Make log file
         log_path = os.path.join(save_dir, r'logs.log')
         log_file = open(log_path, mode='a', encoding='utf8')
@@ -529,69 +507,30 @@ class Pipeline(AbstractPipeline):
         # Main training loop
         early_stop_measure = []
         for e in range(first_epoch, first_epoch + n_epochs + 1):
-            model.train()
-            tq = tqdm(total=(len(train_loader.dataset)))
-            tq.set_description(
-                'Epoch {}, lr {:.10f}'.format(e, optimizer.param_groups[0].get('lr'))
+            # Train one epoch
+            first_step = train_one_epoch(
+                model=model,
+                dataloader=train_loader,
+                criterion=criterion,
+                optimizer=optimizer,
+                epoch=e,
+                allocate_on=self.allocate_on,
+                step=first_step,
+                task=self.task
             )
-            losses = []
-            for data in train_loader:
-                # Locate data on devices
-                inputs = model_utils.cuda(data[0], self.allocate_on)
-                with torch.no_grad():
-                    if self.task == 'segmentation':
-                        targets = model_utils.cuda(data[1], self.allocate_on)
-                    elif self.task == 'detection':
-                        loc_targets = data[1]
-                        cls_targets = data[2]
-                        targets = (
-                            model_utils.cuda(loc_targets, self.allocate_on),
-                            model_utils.cuda(cls_targets, self.allocate_on)
-                        )
-                    elif self.task == 'ocr':
-                        targets_text = data[1]
-                        target_lengths = data[2]
-                        targets = (
-                            inputs,
-                            targets_text,
-                            model_utils.cuda(target_lengths, self.allocate_on)
-                        )
-                    else:  # self.task == 'classification'
-                        targets = model_utils.cuda(data[1], self.allocate_on)
-
-                # Set gradients to zero
-                optimizer.zero_grad()
-                # Make prediction
-                outputs = model(inputs)
-                # Calculate loss
-                loss = criterion(outputs, targets)
-                losses.append(loss.item())
-                loss.backward()
-                # Make optimizer step
-                optimizer.step()
-                first_step += 1
-                # Update progress bar
-                tq.update(inputs.shape[0])
-                train_loss = np.mean(losses)
-                tq.set_postfix(loss='{:.5f}'.format(train_loss))
-            # Close progress bar after epoch
-            tq.close()
-            del tq
-            gc.collect()
             # Calculate validation metrics
             val_metrics = self.validation(
                 model=model,
                 dataloader=val_loader,
-                loss_name=loss_name,
-                metric_names=metric_names
+                metric_names=metric_names,
+                criterion=criterion,
+                validation_mode='train'
             )
             # Write epoch parameters to log file
             model_utils.write_event(log_file, first_step, e, **val_metrics)
             # Make scheduler step
             if scheduler:
-                scheduler.step(
-                    metrics=val_metrics[chp_metric]
-                )
+                scheduler.step(metrics=val_metrics[chp_metric])
             # Save weights if best
             if chp_metric in ['loss']:
                 measure = 1 / val_metrics[chp_metric]
@@ -619,7 +558,6 @@ class Pipeline(AbstractPipeline):
                 )
                 best_measure = measure
                 torch.save(state_dict, best_weights_name)
-
             # Stop training if early stop criterion
             stop_criterion = model_utils.early_stop(
                     metric=early_stop_measure, patience=patience, mode=early_stop_mode
@@ -640,469 +578,203 @@ class Pipeline(AbstractPipeline):
 
     def validation(
             self,
-            model:          nn.Module,
-            dataloader:     DataLoader,
-            loss_name:      str,
-            metric_names:   list,
-            verbose:        int = 1
+            model:              nn.Module,
+            dataloader:         DataLoader,
+            metric_names:       list,
+            validation_mode:    str,
+            criterion                =None,
+            tta_list:           list = None,
+            ignore_class:       int = None,
+            verbose:            int = 1,
+            **kwargs
     ) -> dict:
         """ Function to make validation of the model
 
         :param model:           Input model to validate
         :param dataloader:      Validation dataloader
-        :param loss_name:       Loss name. Depends on given task.
         :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param validation_mode: Validation mode:
+                                    - 'train' - validate every batch, without threcholds calculation
+                                    - 'test' - validate all data, include thresholds calculation
+        :param criterion:       Function to calculate loss
+        :param tta_list:
+        :param ignore_class:
         :param verbose:         Flag to include output information
         :return:
         """
-        model.eval()
-        losses = list()
-        metric_values = dict()
-        for m_name in metric_names:
-            metric_values[m_name] = list()
+        assert validation_mode in ['train', 'test'], f"Wrong mode parameter: {validation_mode}." \
+            f" Should be 'train' or 'test'"
 
-        # Get criterion
-        loss_facade = LossesFacade(task=self.task, mode=self.mode, loss_name=loss_name)
-        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
-        criterion = loss_facade.get_loss(**loss_parameters)
-
-        with torch.no_grad():
-            for data in dataloader:
-                inputs = model_utils.cuda(data[0], self.allocate_on)
-                # Make targets for tasks
-                if self.task == 'segmentation':
-                    targets = model_utils.cuda(data[1], self.allocate_on)
-                elif self.task == 'detection':
-                    loc_target = data[1]
-                    cls_target = data[2]
-                    targets = (
-                        model_utils.cuda(loc_target, self.allocate_on),
-                        model_utils.cuda(cls_target, self.allocate_on)
-                    )
-                elif self.task == 'ocr':
-                    targets_text = data[1]
-                    target_lengths = data[2]
-                    targets = (
-                        inputs,
-                        targets_text,
-                        model_utils.cuda(target_lengths, self.allocate_on)
-                    )
-                else:  # self.task == 'classification':
-                    targets = model_utils.cuda(data[1], self.allocate_on)
-
-                # Make predictions
-                outputs = model(inputs)
-                # Calculate loss
-                loss = criterion(outputs, targets)
-                losses.append(loss.item())
-                # Get parameters for metrics calculation function
-                if self.task == 'segmentation':
-                    get_metric_parameters = dict(
-                        trues=targets, preds=outputs, threshold=0.5
-                    )
-                    if self.mode == 'multi':
-                        get_metric_parameters['per_class'] = True
-                        get_metric_parameters['ignore_class'] = None
-                elif self.task == 'detection':
-                    # TODO implement detection metric
-                    raise NotImplementedError
-                elif self.task == 'ocr':
-                    get_metric_parameters = dict(
-                        trues=targets, preds=outputs
-                    )
-                else:  # self.task == 'classification'
-                    get_metric_parameters = dict(
-                        trues=targets, preds=outputs
-                    )
-                # Calculate metrics for the batch of images
-                for m_name in metric_names:
-                    metric_values[m_name] += [
-                        self.val_metric_class.get_metric(
-                            metric_name=m_name, **get_metric_parameters
+        if validation_mode == 'train':
+            if criterion is None:
+                raise ValueError(
+                    "If validation mode is 'train', criterion function should be provided!"
+                )
+            out_metrics = validate_train(
+                model=model,
+                criterion=criterion,
+                dataloader=dataloader,
+                allocate_on=self.allocate_on,
+                val_metric_class=self.val_metric_class,
+                task=self.task,
+                mode=self.mode,
+                metric_names=metric_names,
+                verbose=verbose
+            )
+        else:  # validation_mode == 'test':
+            # Get dict with predictions
+            pred_kwargs = dict()
+            if self.task == 'segmentation':
+                if self.mode == 'binary':
+                    if tta_list is None:
+                        raise ValueError(
+                            f"If validation mode is 'test', tta_list should be provided!"
                         )
-                    ]
-        # Calculate mean metrics for all images
-        out_metrics = dict()
-        out_metrics['loss'] = np.mean(losses).astype(np.float64)
-        for m_name in metric_names:
-            out_metrics[m_name] = np.mean(metric_values[m_name]).astype(np.float64)
-        # Show information if needed
-        if verbose == 1:
-            string = ''
-            for key, value in out_metrics.items():
-                string += '{}: {:.5f} '.format(key, value)
-            print(string)
+                    pred_kwargs['tta_list'] = tta_list
+            if self.task == 'ocr':
+                pred_kwargs['alphabet_characters'] = self.alphabet_characters
+                pred_kwargs['alphabet_dict'] = self.alphabet_dict
 
+            predictions = predict(
+                model=model,
+                dataloader=dataloader,
+                with_labels=True,
+                allocate_on=self.allocate_on,
+                task=self.task,
+                mode=self.mode,
+                **pred_kwargs
+            )
+
+            # Validate predictions
+            val_kwargs = dict()
+            if self.task == 'segmentation':
+                if self.mode == 'multi':
+                    val_kwargs['ignore_class'] = ignore_class
+                    val_kwargs['label_colors'] = self.label_colors
+            if self.task == 'ocr':
+                val_kwargs['alphabet_dict'] = self.alphabet_dict
+
+            out_metrics = validate_test(
+                predictions=predictions,
+                val_metric_class=self.val_metric_class,
+                task=self.task,
+                mode=self.mode,
+                metric_names=metric_names,
+                verbose=verbose,
+                **val_kwargs
+            )
         return out_metrics
 
-    def predict(
+    def prediction(
             self,
             model:      nn.Module,
             dataloader: DataLoader,
-            save:       bool = False,
-            save_dir:   str = '',
             tta_list:   list = None,
-            **kwargs
-    ) -> pd.DataFrame:
+            save_batch: bool = False,
+            save_dir:   str = ''
+    ) -> dict:
         """ Function to make predictions
 
         :param model:       Input model
         :param dataloader:  Test dataloader
-        :param save:        Flag to save results
+        :param save_batch:  Flag to save results
         :param save_dir:    Path to save results
         :param tta_list:    List of the test-time augmentations
         :return:
         """
-        model.eval()
-
-        # Get predictions dictionary
-        predictions = dict()
-        predictions['names'] = []
-        if self.task == 'detection':
-            predictions['boxes'] = []
-            predictions['labels'] = []
-            predictions['scores'] = []
-        elif self.task == 'segmentation':
-            predictions['masks'] = None
-        elif self.task == 'ocr':
-            predictions['labels'] = []
-        else:  # self.task == 'classification'
-            predictions['labels'] = None
-
-        # Main prediction loop
-        for batch_idx, (inputs, names) in tqdm(enumerate(dataloader), total=(len(dataloader))):
-            with torch.no_grad():
-                for name in names:
-                    predictions['names'].append(name)
-
-                inputs = model_utils.cuda(inputs, self.allocate_on)
-
-                # Get predictions for detection task
-                if self.task == 'detection':
-                    raise NotImplementedError(
-                        f"Detection task not implemented"
-                    )
-                    # TODO REFACTOR!!!
-                    # cls_thresh = kwargs['cls_thresh']
-                    # nms_thresh = kwargs['nms_thresh']
-                    # outputs = model(inputs)
-                    # encoder = DataEncoder(input_size=self.img_size_target)
-                    # loc_preds = outputs[0]
-                    # cls_preds = outputs[1]
-                    # for loc, cls, name in zip(loc_preds, cls_preds, names):
-                    #     preds = encoder.decode(loc.data.cpu().squeeze(),
-                    #                            cls.data.cpu().squeeze(),
-                    #                            cls_thresh=cls_thresh,
-                    #                            nms_thresh=nms_thresh)
-                    #     if preds is not None:
-                    #         boxes, labels, scores = preds[0], preds[1], preds[2]
-                    #         boxes = boxes.data.cpu().numpy().astype(np.uint8)
-                    #         boxes = resize_bboxes(boxes=boxes, size_from=self.img_size_target,
-                    #                               size_to=max(self.img_size_orig))
-                    #         boxes = unpad_bboxes(boxes=boxes, img_shape=self.img_size_orig)
-                    #         labels = labels.data.cpu().numpy()
-                    #         scores = scores.data.cpu().numpy()
-                    #
-                    #         # Sort boxes, labels and scores on x-coord
-                    #         preds = [(box, label, score) for box, label, score in zip(boxes,
-                    #                                                                   labels,
-                    #                                                                   scores)]
-                    #         preds = np.asarray(sorted(preds, key=lambda x: x[0][0]))
-                    #         predictions['boxes'].append(np.asarray([pred[0] for pred in preds]))
-                    #         predictions['labels'].append(np.asarray([pred[1] for pred in preds]))
-                    #         predictions['scores'].append(np.asarray([pred[2] for pred in preds]))
-                    #     else:
-                    #         predictions['boxes'].append([])
-                    #         predictions['labels'].append([])
-                    #         predictions['scores'].append([])
-
-                # Get predictions for segmentation task
-                elif self.task == 'segmentation':
-                    # Get predictions for binary segmentation
-                    if self.mode == 'binary':
-                        # Make predictions with Test-Time Augmentations
-                        tta_stack = []
-                        for tta_class in tta_list:
-                            tta_operation = tta_class(allocate_on=self.allocate_on)
-                            tta_out = tta_operation(model, inputs)
-                            tta_stack.append(tta_out)
-                        tta_stack = np.squeeze(np.mean(tta_stack, axis=0), 1)
-                        if predictions['masks'] is None:
-                            predictions['masks'] = tta_stack
-                        else:
-                            predictions['masks'] = np.append(predictions['masks'], tta_stack, 0)
-
-                    # Get predictions for multiclass segmentation
-                    else:  # self.mode == 'multi'
-                        outputs = model(inputs)
-                        outputs = torch.softmax(outputs, dim=1)
-                        out_masks = np.moveaxis(outputs.data.cpu().numpy(), 1, -1).astype(np.float32)
-                        if predictions['masks'] is None:
-                            predictions['masks'] = out_masks
-                        else:
-                            predictions['masks'] = np.append(predictions['masks'], out_masks, 0)
-
-                # Get predictions for ocr
-                elif self.task == 'ocr':
-                    outputs = model(inputs)
-                    log_preds = F.log_softmax(outputs, dim=2)
-                    converter = LabelConverter(
-                        alphabet=self.alphabet_characters,
-                        ignore_case=False
-                    )
-                    preds = converter.best_path_decode(log_preds, strings=False)
-                    for pred in preds:
-                        predictions['labels'].append(pred)
-
-                # Get predictions for classification task
-                else:  # self.mode == 'classification'
-                    # Get predictions for binary classification
-                    if self.mode == 'binary':
-                        outputs = model(inputs)
-                        outputs = torch.sigmoid(outputs)
-                        preds = np.round(np.squeeze(outputs.data.cpu().numpy(), axis=1)).astype(np.uint8)
-                        if predictions['labels'] is None:
-                            predictions['labels'] = preds
-                        else:
-                            predictions['labels'] = np.append(predictions['labels'], preds, 0)
-
-                    # Get predictions for multiclass classification
-                    else:  # self.mode == 'multi'
-                        outputs = model(inputs)
-                        outputs = torch.softmax(outputs, dim=-1)
-                        preds = np.argmax(outputs.data.cpu().numpy(), axis=-1).astype(np.uint8)
-                        if predictions['labels'] is None:
-                            predictions['labels'] = preds
-                        else:
-                            predictions['labels'] = np.append(predictions['labels'], preds, 0)
-
-        # Make predictions dataframe
-        pred_df = pd.DataFrame()
-        pred_df['names'] = predictions['names']
-        if self.task == 'detection':
-            pred_df['boxes'] = predictions['boxes']
-            pred_df['labels'] = predictions['labels']
-            pred_df['scores'] = predictions['scores']
-        elif self.task == 'segmentation':
-            masks = [msk for msk in predictions['masks']]
-            pred_df['masks'] = masks
-        elif self.task == 'ocr':
-            pred_df['labels'] = predictions['labels']
-        else:  # self.task == 'classification'
-            pred_df['labels'] = predictions['labels']
-
-        # Save result
-        if save:
-            csv_path = os.path.join(save_dir, r'{}.csv'.format(self.time))
-            pred_df.to_csv(path_or_buf=csv_path, sep=';')
-            print("Predictions saved. Path: {}".format(csv_path))
-
-        return pred_df
-
-    def postprocessing(
-            self,
-            pred_df:    pd.DataFrame,
-            threshold:  (list, float) = 0.,
-            hole_size:  int = None,
-            obj_size:   int = None,
-            save:       bool = False,
-            save_dir:   str = ''
-    ) -> pd.DataFrame:
-        """ Function for predicted data postprocessing
-
-        :param pred_df:     Dataset with predicted images and masks
-        :param threshold:   Binarization thresholds
-        :param hole_size:   Minimum hole size to fill
-        :param obj_size:    Minimum obj size
-        :param save:        Flag to save results
-        :param save_dir:    Save directory
-        :return:
-        """
-
+        pred_kwargs = dict()
         if self.task == 'segmentation':
             if self.mode == 'binary':
-                masks = np.copy(pred_df['masks'].values)
-
-                postproc_masks = [
-                    delete_small_instances(
-                        (mask > threshold).astype(np.uint8), obj_size=obj_size, hole_size=hole_size
-                    ) for mask in masks
-                ]
-                pred_df['masks'] = postproc_masks
-
-                # Save result
-                if save:
-                    for row in pred_df.iterrows():
-                        name = row[1]['names']
-                        mask = row[1]['masks']
-                        out_path = dirs.make_dir(f'preds/{self.task}/{self.time}', top_dir=save_dir)
-                        imsave(fname=os.path.join(out_path, name), arr=mask)
-
-            else:  # self.mode == 'multi'
-                postproc_masks = []
-                masks = np.copy(pred_df['masks'].values)
-                for mask in masks:
-                    threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
-                        else threshold
-                    postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
-                    for ch in range(0, mask.shape[-1]):
-                        if ch == 0:
-                            threshold_0 = 0.5
-                            mask_ch = (mask[:, :, ch] > threshold_0).astype(np.uint8)
-                        else:
-                            mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
-                        mask_ch = delete_small_instances(
-                            mask_ch,
-                            obj_size=obj_size,
-                            hole_size=hole_size
-                        )
-                        postproc_mask[mask_ch > 0] = ch
-
-                    postproc_masks.append(postproc_mask)
-                pred_df['masks'] = postproc_masks
-
-                # Save result
-                if save:
-                    for row in pred_df.iterrows():
-                        name = row[1]['names']
-                        mask = row[1]['masks']
-                        out_path = dirs.make_dir(f'preds/{self.task}/{self.time}', top_dir=save_dir)
-                        imsave(fname=os.path.join(out_path, name), arr=mask)
-
-        return pred_df
-
-    def evaluate_metrics(
-            self,
-            true_df:        pd.DataFrame,
-            pred_df:        pd.DataFrame,
-            ignore_class:   int = None,
-            iou_thresholds: list = None,
-            metric_names:   list = None,
-            verbose:        int = 1
-    ) -> dict:
-        """ Common function to evaluate metrics
-
-        :param true_df:
-        :param pred_df:
-        :param ignore_class:
-        :param iou_thresholds:
-        :param metric_names:
-        :param verbose:
-        :return:
-        """
-
-        # Get metrics for detection task
-        if self.task == 'detection':
-            out_metrics = mean_ap(true_df=true_df, pred_df=pred_df, iou_thresholds=iou_thresholds)
-
-        # Get metrics for segmentation task
-        elif self.task == 'segmentation':
-            if metric_names is None:
-                raise ValueError(
-                    f"Wrong metric_names parameter: {metric_names}."
-                )
-
-            all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
-            masks_t = np.asarray([mask for mask in all_df['masks_true'].values])
-            masks_p = np.asarray([mask for mask in all_df['masks_pred'].values])
-
-            # Get metrics for binary segmentation
-            if self.mode == 'binary':
-                out_metrics = dict()
-                for m_name in metric_names:
-                    threshold, metric_value = get_opt_threshold(
-                        masks_t, masks_p, metric_name=m_name
-                    )
-                    out_metrics[m_name] = {'threshold': threshold, 'value': metric_value}
-                if verbose == 1:
-                    for k, v in out_metrics.items():
-                        print(f'{k} metric: ')
-                        for m_k, m_v in v.items():
-                            print(f'- best {m_k}: {m_v:.5f}')
-
-            # Get metrics for multiclass segmentation
-            else:  # self.mode == 'multi'
-                if self.label_colors is None:
+                if tta_list is None:
                     raise ValueError(
-                        f"Provide label_colors for multiclass segmentation task!"
+                        f"If validation mode is 'test', tta_list should be provided!"
                     )
-                out_metrics = dict()
-                for i, (class_name, class_color) in enumerate(self.label_colors.items()):
-                    if i == ignore_class:
-                        continue
-                    class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
-                    class_masks_p = masks_p[..., i + 1]
-                    out_metrics[class_name] = dict()
-                    for m_name in metric_names:
-                        threshold, metric_value = get_opt_threshold(
-                            class_masks_t, class_masks_p, metric_name=m_name
-                        )
-                        out_metrics[class_name][m_name] = {
-                            'threshold': threshold,
-                            'value': metric_value
-                        }
+                pred_kwargs['tta_list'] = tta_list
+        if self.task == 'ocr':
+            pred_kwargs['alphabet_characters'] = self.alphabet_characters
+            pred_kwargs['alphabet_dict'] = self.alphabet_dict
 
-                if verbose == 1:
-                    for class_name, class_values in out_metrics.items():
-                        print(f'\nClass {class_name}: ')
-                        for k, v in class_values.items():
-                            print(f'{k} metric: ')
-                            for m_k, m_v in v.items():
-                                print(f'- best {m_k}: {m_v:.5f}')
+        predictions = predict(
+            model=model,
+            dataloader=dataloader,
+            with_labels=False,
+            allocate_on=self.allocate_on,
+            task=self.task,
+            mode=self.mode,
+            save_batch=save_batch,
+            save_dir=save_dir,
+            **pred_kwargs
+        )
 
-        # Get metrics for ocr task
-        elif self.task == 'ocr':
-            all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
+        return predictions
 
-            names = all_df['names'].values
-            labels_t_ = [l.replace(' ', '') for l in all_df['labels_true'].values]
-            labels_t = []
-            for label_t_ in labels_t_:
-                out_label = []
-                for i in range(len(label_t_)):
-                    char = label_t_[i]
-                    out_label.append(self.alphabet_dict[char])
-                labels_t.append(out_label)
-
-            labels_p = all_df['labels_pred'].values
-            labels_p_ = []
-            for i, label_p in enumerate(labels_p):
-                label_p_ = ''
-                for char in label_p:
-                    for k, v in self.alphabet_dict.items():
-                        if char == v:
-                            label_p_ += k
-                labels_p_.append(label_p_)
-
-            for name, label_t_, label_p_ in zip(names, labels_t_, labels_p_):
-                images_dir = r'/home/ido-mts/Work/Projects/task_numbers_recognition/cs_scripts_numbers_recognition/data/ocr/real/holdout/images'
-                image = cv2.imread(os.path.join(images_dir, name))
-                if label_t_ != label_p_:
-                    print(f'True: {label_t_}\nPred: {label_p_}')
-                    draw_images([image])
-
-            out_metrics = dict()
-            for m_name in metric_names:
-                out_metrics[m_name] = self.val_metric_class.get_metric_value(
-                    labels_t, labels_p, m_name
-                )
-
-        else:  # self.task == 'classification'
-            all_df = true_df.merge(pred_df, on='names', suffixes=['_true', '_pred'])
-            labels_t = all_df['labels_true'].values.astype(np.uint8)
-            labels_p = all_df['labels_pred'].values
-            out_metrics = dict()
-            for m_name in metric_names:
-                out_metrics[m_name] = self.val_metric_class.get_metric_value(
-                    labels_t, labels_p, m_name
-                )
-
-        return out_metrics
+    # def postprocessing(
+    #         self,
+    #         predictions:    dict,
+    #         threshold:      (list, float) = 0.,
+    #         hole_size:      int = None,
+    #         obj_size:       int = None,
+    #         save:           bool = False,
+    #         save_dir:       str = ''
+    # ) -> pd.DataFrame:
+    #     """ Function for predicted data postprocessing
+    #
+    #     :param pred_df:     Dataset with predicted images and masks
+    #     :param threshold:   Binarization thresholds
+    #     :param hole_size:   Minimum hole size to fill
+    #     :param obj_size:    Minimum obj size
+    #     :param save:        Flag to save results
+    #     :param save_dir:    Save directory
+    #     :return:
+    #     """
+    #
+    #     if self.task == 'segmentation':
+    #         if self.mode == 'binary':
+    #             masks = np.copy(predictions['labels_pred'].values)
+    #
+    #             postproc_masks = [
+    #                 delete_small_instances(
+    #                     (mask > threshold).astype(np.uint8), obj_size=obj_size, hole_size=hole_size
+    #                 ) for mask in masks
+    #             ]
+    #             predictions['labels_pred'] = postproc_masks
+    #
+    #         else:  # self.mode == 'multi'
+    #             postproc_masks = []
+    #             masks = np.copy(pred_df['masks'].values)
+    #             for mask in masks:
+    #                 threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
+    #                     else threshold
+    #                 postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
+    #                 for ch in range(0, mask.shape[-1]):
+    #                     if ch == 0:
+    #                         threshold_0 = 0.5
+    #                         mask_ch = (mask[:, :, ch] > threshold_0).astype(np.uint8)
+    #                     else:
+    #                         mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
+    #                     mask_ch = delete_small_instances(
+    #                         mask_ch,
+    #                         obj_size=obj_size,
+    #                         hole_size=hole_size
+    #                     )
+    #                     postproc_mask[mask_ch > 0] = ch
+    #
+    #                 postproc_masks.append(postproc_mask)
+    #             pred_df['masks'] = postproc_masks
+    #
+    #             # Save result
+    #             if save:
+    #                 for row in pred_df.iterrows():
+    #                     name = row[1]['names']
+    #                     mask = row[1]['masks']
+    #                     out_path = dirs.make_dir(f'preds/{self.task}/{self.time}', top_dir=save_dir)
+    #                     imsave(fname=os.path.join(out_path, name), arr=mask)
+    #
+    #     return pred_df
 
     def visualize_preds(
             self,
-            preds_df:       pd.DataFrame,
-            images_path:    str
+            preds:       dict,
     ):
         """ Function for simple visualization
 
@@ -1113,39 +785,26 @@ class Pipeline(AbstractPipeline):
         # Get visualization for detection task
         if self.task == 'detection':
             # ToDo: refactor detection line
-            pass
-
-            # for row in preds_df.iterrows():
-            #     name = row[1]['names']
-            #     boxes = row[1]['boxes'].tolist()
-            #     labels = row[1]['labels']
-            #     scores = row[1]['scores']
-            #     image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
-            #                        dtype=np.uint8)
-            #     h_i, w_i = image.shape[0], image.shape[1]
-            #     h, w = self.img_size_orig
-            #     if h != h_i and w != w_i:
-            #         image = cv2.resize(image, (w, h), interpolation=cv2.INTER_AREA)
-            #     draw_image_boxes(image, boxes, labels, scores)
+            raise NotImplementedError(
+                f"Detection task not implemented"
+            )
 
         elif self.task == 'segmentation':
+            names = preds['names']
+            images = preds['images']
+            masks = preds['labels_pred']
             # Get visualization for binary segmentation task
             if self.mode == 'binary':
-                for row in preds_df.iterrows():
-                    name = row[1]['names']
-                    image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)), dtype=np.uint8)
-                    mask = row[1]['masks']
 
+                for name, image, mask in zip(names, images, masks):
+                    # h, w = image.shape[:2]
+                    # mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
                     msk_img = np.copy(image)
                     matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
                     msk_img[matching, :] = [0, 0, 0]
-                    draw_images([image, mask], orient='vertical')
+                    draw_images([image, mask, msk_img])
 
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'
-                for row in preds_df.iterrows():
-                    name = row[1]['names']
-                    image = np.asarray(cv2.imread(filename=os.path.join(images_path, name)),
-                                       dtype=np.uint8)
-                    mask = row[1]['masks']
-                    draw_images([image, mask], orient='vertical')
+                for name, image, mask in zip(names, images, masks):
+                    draw_images([image, mask])

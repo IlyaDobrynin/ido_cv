@@ -9,8 +9,7 @@ from ..loss_utils import get_weight
 
 
 class BinaryBceMetric(nn.Module):
-    """
-    Loss defined as (1 - alpha) * BCE - alpha * SoftJaccard
+    """ Loss defined as (1 - alpha) * BCE - alpha * SoftJaccard
     """
 
     def __init__(self, metric=None, weight_type=None, is_average=False, alpha=0.3,
@@ -55,7 +54,7 @@ class BinaryBceMetric(nn.Module):
                     f"Metric {self.metric} doesn't implemented. "
                     f"Should be 'jaccard', 'dice', 'lovasz' or None."
                 )
-            loss = (1 - self.alpha) * bce_loss - self.alpha * torch.log(metric_coef)
+            loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
         else:
             loss = bce_loss
         return loss

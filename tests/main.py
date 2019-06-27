@@ -9,7 +9,7 @@ import datetime
 from ido_cv.tests import test_main
 from ido_cv import main_pipe
 from ido_cv.src import allowed_parameters
-from ido_cv.src.utils.get_model_config import ConfigParser
+from ido_cv.src.utils.configs import ConfigParser
 
 
 parameters = dict(

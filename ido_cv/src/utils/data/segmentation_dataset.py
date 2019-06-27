@@ -8,10 +8,10 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from albumentations.torch.functional import img_to_tensor
+from albumentations.pytorch.functional import img_to_tensor
 from torch.utils.data import Dataset
-from ...utils.image_utils import draw_images
-from ...utils.image_utils import convert_multilabel_mask
+from mts_cv.src.utils.image_utils import draw_images
+from mts_cv.src.utils.image_utils import convert_multilabel_mask
 
 
 def add_depth_channels(image_tensor):
@@ -26,9 +26,16 @@ class BinSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, train: bool, add_depth: bool = False, data_path: str = None,
-                 data_file: pd.DataFrame = None, common_augs=None, train_time_augs=None,
-                 show_sample: bool = False):
+    def __init__(
+            self,
+            train:          bool,
+            add_depth:      bool = False,
+            data_path:      str = None,
+            data_file:      pd.DataFrame = None,
+            common_augs     =None,
+            train_time_augs =None,
+            show_sample:    bool = False
+    ):
 
         self.train = train
         self.show_sample = show_sample
@@ -92,7 +99,10 @@ class BinSegDataset(Dataset):
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             viz_mask = np.squeeze(np.moveaxis(mask.data.numpy(), 0, -1), -1)
-            draw_images([viz_image, viz_mask])
+            msk_img = np.copy(viz_image)
+            matching = np.all(np.expand_dims(viz_mask, axis=-1) > 0.1, axis=-1)
+            msk_img[matching, :] = [0, 0, 0]
+            draw_images([viz_image, viz_mask, msk_img])
 
         return image, mask, str(name)
     
@@ -101,10 +111,7 @@ class BinSegDataset(Dataset):
             data = {'image': image}
             common_augs = self.common_augs(**data)
             image = common_augs['image']
-        if self.train_time_augs:
-            data = {'image': image}
-            augmented = self.train_time_augs(**data)
-            image = augmented['image']
+
         if self.add_depth:
             image = add_depth_channels(img_to_tensor(image))
 
@@ -112,12 +119,12 @@ class BinSegDataset(Dataset):
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
 
+        image = img_to_tensor(image)
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             draw_images([viz_image])
 
-        image = img_to_tensor(image)
-        return image, str(name)
+        return image, image.shape, str(name)
 
     def collate_fn(self, batch):
         '''Pad images and encode targets.
@@ -144,21 +151,30 @@ class BinSegDataset(Dataset):
                 targets[i] = masks[i]
             return inputs, targets, names
         else:
-            names = [x[1] for x in batch]
+            names = [x[-1] for x in batch]
+            shapes = [x[1] for x in batch]
             num_imgs = len(imgs)
             inputs = torch.zeros(num_imgs, 3, h, w)
             for i in range(num_imgs):
                 inputs[i] = imgs[i]
-            return inputs, names
+            return inputs, shapes, names
 
 
 class MultSegDataset(Dataset):
     """ Class describes current dataset
     """
     
-    def __init__(self, train: bool, add_depth: bool = False, data_path: str = None,
-                 data_file: pd.DataFrame = None, common_augs=None, train_time_augs=None,
-                 show_sample: bool = False, **kwargs):
+    def __init__(
+            self,
+            train: bool,
+            add_depth: bool = False,
+            data_path: str = None,
+            data_file: pd.DataFrame = None,
+            common_augs=None,
+            train_time_augs=None,
+            show_sample: bool = False,
+            **kwargs
+    ):
 
         self.train = train
         self.show_sample = show_sample

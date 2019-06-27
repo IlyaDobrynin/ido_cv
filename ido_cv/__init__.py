@@ -1,6 +1,6 @@
 from .src import models
 from .src import utils
-from .src import data_utils
+from .src.utils import data
 from .src.pipeline.find_learning_rate import find_lr
 from .src.pipeline.train import train
 from .src.pipeline.validation import validation

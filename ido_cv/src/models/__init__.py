@@ -4,3 +4,5 @@ from .segmentation import deeplabv3
 from .segmentation import fpn_factory
 from .detection import retinanet
 from .ocr import crnn
+
+from .models_facade import ModelFacade

@@ -29,11 +29,6 @@ def main_pipe(args):
     else:
         allocate_on = 'gpu'
 
-    if args['tta_list'] is not None:
-        tta_list = [TTA[args['task']][args['mode']][tta_name] for tta_name in args['tta_list']]
-    else:
-        tta_list = None
-
     # Get main pipeline class
     pipe_class = Pipeline(
         task=args['task'],
@@ -66,7 +61,8 @@ def main_pipe(args):
         cudnn_bench=args['cudnn_benchmark'],
         path_to_weights=args['path_to_weights'],
         model_parameters=args['model_parameters'],
-        verbose=True
+        verbose=True,
+        show_model=True
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']
@@ -82,14 +78,14 @@ def main_pipe(args):
     # Get dataloaders
     common_dataloader_parameters = dict(
         workers=args['workers'],
-        common_augs=args['common_augs'],
-        train_time_augs=args['train_time_augs']
+        common_augs=args['common_augs']
     )
     find_lr_dataloader = pipe_class.get_dataloaders(
         path_to_dataset=path_to_train,
         batch_size=5,
         is_train=True,
         shuffle=args['shuffle_train'],
+        train_time_augs=args['train_time_augs'],
         **common_dataloader_parameters
     )
     train_loader = pipe_class.get_dataloaders(
@@ -97,6 +93,7 @@ def main_pipe(args):
         batch_size=args['batch_size'],
         is_train=True,
         shuffle=args['shuffle_train'],
+        train_time_augs=args['train_time_augs'],
         **common_dataloader_parameters
     )
     val_loader = pipe_class.get_dataloaders(
@@ -109,7 +106,7 @@ def main_pipe(args):
     holdout_loader = pipe_class.get_dataloaders(
         path_to_dataset=path_to_holdout,
         batch_size=args['batch_size'],
-        is_train=False,
+        is_train=True,
         shuffle=False,
         **common_dataloader_parameters
     )
@@ -164,7 +161,7 @@ def main_pipe(args):
             print('-' * 30, ' VALIDATION ', '-' * 30)
             scores = validation(
                 model=model, pipeline=pipe_class, dataloaders=dataloaders,
-                data_path=path_to_holdout, val_metrics=args['valid_metrics'],
+                val_metrics=args['valid_metrics'], tta_list=args['tta_list'],
                 save_preds=args['save_val'], output_path=args['output_path']
             )
             print(scores)
@@ -187,9 +184,12 @@ def main_pipe(args):
                     else args['default_threshold']
 
         print(f'Prediction threshold: {threshold}')
-        prediction(
-            model=model, pipeline=pipe_class, dataloaders=dataloaders, tta_list=args['tta_list'],
-            threshold=threshold, postprocess=args['postproc_test'], output_path=args['output_path'],
-            show_preds=args['show_preds'], save_preds=args['save_test']
+        test_preds = prediction(
+            model=model, pipeline=pipe_class, data_path=path_to_test, dataloaders=dataloaders,
+            tta_list=args['tta_list'], threshold=threshold, postprocess=args['postproc_test'],
+            output_path=args['output_path'], show_preds=args['show_preds'],
+            save_preds=args['save_test']
         )
+        return test_preds
+
 

@@ -1,16 +1,18 @@
-import torch
-from collections.abc import Iterable
 import numpy as np
+import torch
 from tqdm import tqdm
-import cv2
 from sklearn.metrics import accuracy_score
-from .image_utils import resize_image
 
 
 # SEGMENTATION
 
 
-def get_opt_threshold(trues, preds, threshold_min=0.1, metric_name='dice'):
+def get_opt_threshold(
+        trues:          np.ndarray,
+        preds:          np.ndarray,
+        metric_name:    str,
+        threshold_min:  float = 0.1
+) -> tuple:
     """ Function returns optimal threshold for prediction images
 
     :param trues: Ground truth validation masks
@@ -33,11 +35,15 @@ def get_opt_threshold(trues, preds, threshold_min=0.1, metric_name='dice'):
     return best_threshold, best_metric
 
 
-def torch_metric_per_image(trues, preds, metric_name):
+def torch_metric_per_image(
+        trues: torch.Tensor,
+        preds: torch.Tensor,
+        metric_name: str
+) -> np.ndarray:
     """ Function returns metrics calculated on GPU via pytorch
 
-    :param preds: Predictions of the network
     :param trues: Ground truth labels
+    :param preds: Predictions of the network
     :param metric_name: Name of the metric to calculate
     """
     smooth = 1e-12
@@ -82,11 +88,15 @@ def torch_metric_per_image(trues, preds, metric_name):
     return np.mean(metrics)
 
 
-def torch_metric(trues, preds, metric_name):
+def torch_metric(
+        trues: torch.Tensor,
+        preds: torch.Tensor,
+        metric_name: str
+) -> np.ndarray:
     """ Function returns metrics calculated on GPU via pytorch
 
-    :param preds: Predictions of the network
-    :param trues: Ground truth labels
+    :param trues: Ground truth validation masks
+    :param preds: Predicted validation masks
     :param metric_name: Name of the metric to calculate
     """
     smooth = 1e-12
@@ -116,15 +126,16 @@ def torch_metric(trues, preds, metric_name):
     return metric
 
 
-def numpy_metric_per_image(trues, preds, metric_name):
+def numpy_metric_per_image(
+        trues: np.ndarray,
+        preds: np.ndarray,
+        metric_name: str
+) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 
-    :param y_true: True labels
-    :param y_pred: Predicted labels
-    :param metric_name:
-    :param device: Device to calculate metric:
-                    - 'cpu'
-                    - 'gpu'
+    :param trues: True labels
+    :param preds: Predicted labels
+    :param metric_name: Name of t metric
     :return:
     """
     smooth = 1e-12
@@ -164,15 +175,16 @@ def numpy_metric_per_image(trues, preds, metric_name):
     return np.mean(metrics)
 
 
-def numpy_metric(trues, preds, metric_name):
+def numpy_metric(
+        trues: np.ndarray,
+        preds: np.ndarray,
+        metric_name: str
+) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 
-    :param y_true: True labels
-    :param y_pred: Predicted labels
+    :param trues: Ground truth validation masks
+    :param preds: Predicted validation masks
     :param metric_name:
-    :param device: Device to calculate metric:
-                    - 'cpu'
-                    - 'gpu'
     :return:
     """
     smooth = 1e-12
@@ -205,8 +217,11 @@ def numpy_metric(trues, preds, metric_name):
     return metric
 
 
-def calculate_confusion_matrix_from_arrays(prediction: np.ndarray, ground_truth: np.ndarray,
-                                           nr_labels: int) -> np.ndarray:
+def calculate_confusion_matrix_from_arrays(
+        prediction: np.ndarray,
+        ground_truth: np.ndarray,
+        nr_labels: int
+) -> np.ndarray:
     """ Function calculate confusion matrix from the images arrays
 
     :param prediction: Predicted images
@@ -227,8 +242,11 @@ def calculate_confusion_matrix_from_arrays(prediction: np.ndarray, ground_truth:
     return confusion_matrix
 
 
-def get_metric_from_matrix(confusion_matrix: np.ndarray, metric_name: str,
-                           ignore_class: int = None) -> list:
+def get_metric_from_matrix(
+        confusion_matrix: np.ndarray,
+        metric_name: str,
+        ignore_class: int = None
+) -> list:
     """ Function returns specified metric from confusion matrix
 
     :param confusion_matrix: Confusion matrix of TP, TN, FP, FN for each class

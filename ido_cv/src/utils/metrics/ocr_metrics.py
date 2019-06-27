@@ -4,12 +4,6 @@ import torch.nn.functional as F
 from ..ocr_utils import LabelConverter
 
 
-characters = r'°1234567890' \
-           'абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ' \
-           'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' \
-           '!@"#№%$%^&*();:-_=+\|/?<>~`., '
-
-
 class OCRMetrics:
     def __init__(self, mode: str, ignore_case: bool = False, alphabet: str = None):
         assert mode in ['all'], f'Wrong mode parameter: {mode}. ' \
@@ -59,17 +53,13 @@ class OCRMetrics:
         return metric
 
     @staticmethod
-    def get_metric_value(trues, preds, metric_name: str):
+    def get_metric_value(trues: list, preds: list, metric_name: str):
         if metric_name == 'accuracy':
             num_correct = 0
             for pred, true in zip(preds, trues):
                 if pred == true:
                     num_correct += 1
-                print('*' * 64)
-                print(true)
-                print(pred)
             metric = (num_correct / len(trues))
-            print('_' * 64)
         else:
             raise ValueError(
                 f'Wrong metric_name: {metric_name}.'

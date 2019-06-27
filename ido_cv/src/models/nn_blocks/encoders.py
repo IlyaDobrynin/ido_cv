@@ -8,8 +8,18 @@ from ..backbones.pretrain_parameters import encoder_dict
 
 
 class EncoderCommon(nn.Module):
-    def __init__(self, backbone, pretrained, depth, unfreeze_encoder, custom_enc_start=False,
-                 num_input_channels=None, bn_type='default', conv_type='default', depthwise=False):
+    def __init__(
+            self,
+            backbone,
+            pretrained: str,
+            depth: int,
+            unfreeze_encoder: bool,
+            custom_enc_start: bool,
+            num_input_channels: int,
+            bn_type: str,
+            conv_type: str,
+            depthwise: bool
+    ):
         super(EncoderCommon, self).__init__()
 
         assert backbone in backbone_factory.BACKBONES.keys(), \
@@ -25,9 +35,11 @@ class EncoderCommon(nn.Module):
         self.encoder_layers_dict = encoder_dict[backbone]['skip']
         self.encoder_filters = encoder_dict[backbone]['filters']
         self.is_featured = encoder_dict[backbone]['features']
-        self.encoder = backbone_factory.get_backbone(name=self.backbone,
-                                                     pretrained=pretrained,
-                                                     requires_grad=unfreeze_encoder)
+        self.encoder = backbone_factory.get_backbone(
+            name=self.backbone,
+            pretrained=pretrained,
+            requires_grad=unfreeze_encoder
+        )
         if custom_enc_start:
             first_enc_layer = nn.Sequential(
                 OrderedDict(

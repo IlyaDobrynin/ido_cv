@@ -74,8 +74,13 @@ class SegmentationMetrics:
 
         return metric
 
-    def _get_metric_binary(self, trues: torch.Tensor, preds: torch.Tensor, metric_name: str,
-                           threshold: float) -> float:
+    def _get_metric_binary(
+            self,
+            trues:          torch.Tensor,
+            preds:          torch.Tensor,
+            metric_name:    str,
+            threshold:      float
+    ) -> float:
         """ Metric for binary segmentation
 
         :param metric_name:
@@ -92,9 +97,14 @@ class SegmentationMetrics:
                                         threshold=threshold, device=self.device)
         return metric
 
-    def _get_metric_multi_per_class(self, trues: torch.Tensor, preds: torch.Tensor,
-                                    metric_name: str, threshold: float,
-                                    ignore_class: int = None) -> np.ndarray:
+    def _get_metric_multi_per_class(
+            self,
+            trues:          torch.Tensor,
+            preds:          torch.Tensor,
+            metric_name:    str,
+            threshold:      float,
+            ignore_class:   int = None
+    ) -> np.ndarray:
         """ Alternative metric for multiclass segmentation
 
         :param metric_name: Name of the desired metric

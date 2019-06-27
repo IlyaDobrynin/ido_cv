@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from albumentations.torch.functional import img_to_tensor
+from albumentations.pytorch.functional import img_to_tensor
 from torch.utils.data import Dataset
-from ...utils.image_utils import draw_images
+from mts_cv.src.utils.image_utils import draw_images
 
 
 class ClassifyDataset(Dataset):

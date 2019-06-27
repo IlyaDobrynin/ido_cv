@@ -5,7 +5,7 @@
 
 import numpy as np
 import torch
-from ..utils.common_utils import box_iou, box_nms
+from mts_cv.src.utils.common_utils import box_iou, box_nms
 
 
 class DataEncoder:

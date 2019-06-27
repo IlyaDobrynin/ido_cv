@@ -12,6 +12,50 @@ import torch
 import torch.nn as nn
 
 
+def rle_encode(image: np.ndarray) -> list:
+    """ Function to perform run-length encoding for the given image
+
+    :param img: numpy array, 1 - mask, 0 - background
+    Returns run length as string formated
+    """
+    image_ = np.copy(image)
+    pixels = image_.flatten()
+    pixels = np.concatenate([[0], pixels, [0]])
+    # pixels = np.concatenate([[0], pixels])
+    runs = np.where(pixels[1:] != pixels[:-1])[0] + 1
+    runs[1::2] -= runs[::2]
+    # print(runs)
+    # starts = [runs[i] for i in range(0, len(runs), 2)]
+    # lengths = [runs[i] for i in range(1, len(runs), 2)]
+    # rle_list = [(s, l) for s, l in zip(starts, lengths)]
+
+    return runs
+    # return ' '.join(str(x) for x in runs)
+
+
+def rle_decode(rle_list: list, shape: tuple, fill_value: int = 1):
+    """ Function to perform run-length decoding for the given encoded list
+
+    :param rle_list: run-length as list formated [(start, length)]
+    :param shape: (height, width) of array to return
+    :param fill_value: Value to fill
+    Returns numpy array, fill_value - mask, 0 - background
+    """
+    # s = rle_list.split()
+    starts = np.asarray([x for x in rle_list[0:][::2]], dtype=int)
+    lengths = np.asarray([x for x in rle_list[1:][::2]], dtype=int)
+    # starts, lengths = [np.asarray(x, dtype=int) for x in (s[0:][::2], s[1:][::2])]
+    #
+    # print(starts)
+    # print(lengths)
+    starts -= 1
+    ends = starts + lengths
+    img = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    for lo, hi in zip(starts, ends):
+        img[lo:hi] = fill_value
+    return img.reshape(shape)
+
+
 def get_mean_and_std(dataset, max_load=10000):
     '''Compute the mean and std value of dataset.'''
     mean = torch.zeros(3)
@@ -393,7 +437,7 @@ def get_true_ocr(labels_path: str) -> pd.DataFrame:
     return true_df
 
 
-def make_images_df(images: (str, np.ndarray), labels_path: str=None) -> pd.DataFrame:
+def make_images_df(images: (str, np.ndarray)) -> pd.DataFrame:
     """ Function make pandas dataframe with input images
 
     :param images: Input image (or images)
@@ -405,50 +449,23 @@ def make_images_df(images: (str, np.ndarray), labels_path: str=None) -> pd.DataF
             images = np.expand_dims(images, axis=0)
         fnames = [(str(sha1(images[i, ...]).hexdigest()) + '.png') for i in range(images.shape[0])]
         images_ = [image for image in images]
-
-        if labels_path is not None:
-            raise ValueError(
-                f"If type of images id numpy.ndarray, you can't get true labels file."
-            )
         out_df = pd.DataFrame()
         out_df['names'] = fnames
         out_df['images'] = images_
 
     elif type(images) == str:
-        if os.path.exists(images):
-            fnames = os.listdir(images)
-            images_ = [
-                cv2.cvtColor(cv2.imread(os.path.join(images, name)), cv2.COLOR_BGR2RGB)
-                for name in fnames
-            ]
-        else:
+        if not os.path.exists(images):
             raise ValueError(
                 f'Wrong path to images: {images}'
             )
+        fnames = os.listdir(images)
+        images_ = [
+            cv2.cvtColor(cv2.imread(os.path.join(images, name)), cv2.COLOR_BGR2RGB)
+            for name in fnames
+        ]
         out_df = pd.DataFrame()
         out_df['names'] = fnames
         out_df['images'] = images_
-
-        if labels_path is not None:
-            if os.path.exists(labels_path):
-                with open(labels_path, 'r') as labels:
-                    lines = labels.readlines()
-                labels_df = pd.DataFrame()
-                names = []
-                dates = []
-                for line in lines:
-                    line = line.strip().split()
-                    name = line[0] + '.png'
-                    date = [int(ch) for ch in line[1:]]
-                    names.append(name)
-                    dates.append(date)
-                labels_df['names'] = names
-                labels_df['dates'] = dates
-                out_df = out_df.merge(labels_df, on='names')
-            else:
-                raise RuntimeError(
-                    f'Wrong path to labels_path: {labels_path}'
-                )
     else:
         raise ValueError(
             f'Wrong type of images: {type(images)}. Should be str or numpy.ndarray'

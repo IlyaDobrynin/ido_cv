@@ -23,12 +23,12 @@ models_dict = {
         'retinanet': retinanet.RetinaNet
     },
     'ocr': {
-        'crnn': crnn.CRNN
+        'crnn': crnn.CRNNFactory
     }
 }
 
 
-class ModelsFacade:
+class ModelFacade:
     """
         Class realize facade pattern for all models
         Arguments:

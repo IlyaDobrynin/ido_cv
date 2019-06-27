@@ -1,38 +1,67 @@
-import os
-
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ..nn_blocks.encoders import EncoderCommon
-# from mts_cv.src.models.nn_blocks.encoders import EncoderCommon
+from ..nn_blocks.common_blocks import ConvBnRelu
+from ..nn_blocks.ocr_blocks import RNNModule
 
 
-class BLSTM(nn.Module):
+class CRNNFactory(EncoderCommon):
+    """
+    Class makes model for OCR task. Implements CRNN approach:
+        1. features from input image extracts with CNN blocks
+        2. Extracted features goes into RNN layer (LSTM or GRU)
+        3. Exit of RNN goes into CTC loss
 
-    def __init__(self, in_channels, hidden_size, out_size):
-        super(BLSTM, self).__init__()
+        Paper: https://arxiv.org/pdf/1507.05717.pdf
 
-        self.rnn = nn.LSTM(in_channels, hidden_size, bidirectional=True)
-        self.embedding = nn.Linear(hidden_size * 2, out_size)
+    Arguments:
+        backbone:           Name of the u-net encoder line.
+                            Should be in backbones.backbone_factory.backbones.keys()
+        depth:              Depth of the u-net encoder. Should be in [1, 5] interval.
+        num_classes:        Amount of output classes to predict
+        num_filters:        Number of filters in first convolution layer. All filters based on this
+                            value.
+        pretrained:         Name of the pretrain weights. 'imagenet' or None
+        rnn_type:           Type of rnn block:
+                                - 'lstm'
+                                - 'gru'
+        rnn_depth:          Amount of recurrent blocks in decoder
+        hidden_dim:         Size of RNN block hidden layer
+        unfreeze_encoder:   Flag to unfreeze encoder weights
+        custom_enc_start:   Flag to replace pretrained model first layer with custom ConvBnRelu
+                            layer with stride 2
+        num_input_channels: Amount of input channels
+        bn_type:            Decoder batchnorm type:
+                                'default' - normal nn.BatchNorm2d
+                                'sync' - synchronized batсhnorm
+        conv_type:          Decoder conv layer type:
+                                'default' - sunple nn.Conv2d
+                                'partial' - Partial convolution
+                                'same' - Convolution with same padding
+        depthwise:          Flag to use depthwise separable convolution instead of simple
+                            torch.nn.Conv2d
+    """
 
-    def forward(self, x):
-        recurrent, _ = self.rnn(x)
-        T, b, h = recurrent.size()
-        t_rec = recurrent.view(T * b, h)
-        output = self.embedding(t_rec)  # [T * b, out_size]
-        output = output.view(T, b, -1)
+    def __init__(
+            self,
+            backbone:           str,
+            depth:              int = 5,
+            num_classes:        int = 1,
+            num_filters:        int = 256,
+            pretrained:         str = 'imagenet',
+            rnn_type:           str = 'lstm',
+            rnn_depth:          int = 2,
+            hidden_dim:         int = 256,
+            unfreeze_encoder:   bool = True,
+            custom_enc_start:   bool = False,
+            num_input_channels: int = 3,
+            bn_type:            str = 'default',
+            conv_type:          str = 'default',
+            depthwise:          bool = False
+    ):
 
-        return output
-
-
-class CRNN(EncoderCommon):
-
-    def __init__(self, backbone, depth=5, num_classes=1, pretrained='imagenet',
-                 hidden_dim: int = 256, unfreeze_encoder=True, custom_enc_start=False,
-                 num_input_channels=3, bn_type='default', conv_type='default', depthwise=False):
-
-        super(CRNN, self).__init__(
+        super(CRNNFactory, self).__init__(
             backbone=backbone,
             pretrained=pretrained,
             depth=depth,
@@ -43,93 +72,104 @@ class CRNN(EncoderCommon):
             conv_type=conv_type,
             depthwise=depthwise
         )
+        self.filters_tuple = (
+            num_filters,
+            num_filters,
+            num_filters * 2,
+            num_filters * 2
+        )
+        self.rnn_type = rnn_type
+        self.rnn_depth = rnn_depth
+        self.hidden_dim = hidden_dim
+        self.num_classes = num_classes
 
-        kernel_sizes = [3, 3, 3, 3, 3, 3, 2]
-        padding_sizes = [1, 1, 1, 1, 1, 1, 0]
-        stride_sizes = [1, 1, 1, 1, 1, 1, 1]
-        num_filters = [64, 128, 256, 256, 512, 512, 512]
-
-        cnn = nn.Sequential()
-
-        def convRelu(i, batchNormalization=False):
-            nIn = num_input_channels if i == 0 else num_filters[i - 1]
-            nOut = num_filters[i]
-            cnn.add_module(
-                'conv{0}'.format(i),
-                nn.Conv2d(
-                    nIn,
-                    nOut,
-                    kernel_sizes[i],
-                    stride_sizes[i],
-                    padding_sizes[i]
-                )
-            )
-            if batchNormalization:
-                cnn.add_module(
-                    'batchnorm{0}'.format(i),
-                    nn.BatchNorm2d(nOut)
-                )
-            cnn.add_module(
-                'relu{0}'.format(i),
-                nn.ReLU(True)
-            )
-
-        convRelu(0)                                                                    #   3 x 48 x 256
-        cnn.add_module('pooling{0}'.format(0), nn.MaxPool2d(kernel_size=2, stride=2))  #  64 x 24 x 128
-        convRelu(1)
-        cnn.add_module('pooling{0}'.format(1), nn.MaxPool2d(kernel_size=2, stride=2))  # 128 x 12 x 64
-        convRelu(2, True)
-        convRelu(3)
-        cnn.add_module('pooling{0}'.format(2), nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 1)))  # 256 x 6  x 64
-        convRelu(4, True)
-        convRelu(5)
-        cnn.add_module('pooling{0}'.format(3), nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 1)))  # 512 x 2 x 64
-        convRelu(6, True)  # 512x1x16
-
-        self.cnn = cnn
-
-        # print('CRNN.encoder_layers_0', self.encoder_layers[0])
-        # print('CRNN.encoder_layers_1', self.encoder_layers[1])
-        # print('CRNN.encoder_layers_2', self.encoder_layers[2])
-
-        self.feat_idx = -1
+        # Get CNN
+        self.cnn = self._make_cnn()
         self.avgpool = nn.AdaptiveAvgPool2d((1, None))
-        self.rnn = nn.Sequential(
-            BLSTM(self.encoder_filters[self.feat_idx], hidden_dim, hidden_dim),
-            # BLSTM(hidden_dim, hidden_dim, hidden_dim),
-            # BLSTM(hidden_dim, hidden_dim, hidden_dim),
-            BLSTM(hidden_dim, hidden_dim, num_classes))
+        # Get RNN
+        self.rnn = self._make_rnn()
+
+    def _make_cnn(self):
+        """ Method makes CNN part of encoder for extracting features from input image
+
+        :return: CNN Sequential
+        """
+        cnn = nn.Sequential()
+        # Get first two layers from pretrained net
+        for i in range(2):
+            cnn.add_module(
+                name=f'encoder_{i}',
+                module=self.encoder_layers[i]
+            )
+        # Get other CNN layers
+        for i in range(1, 4):
+            common_conv_params = dict(
+                depthwise=self.depthwise,
+                conv_type=self.conv_type,
+                bn_type=self.bn_type
+            )
+            in_ch = self.encoder_filters[1] if i == 0 else self.filters_tuple[i - 1]
+            out_ch = self.filters_tuple[i]
+
+            cnn.add_module(
+                name=f'conv_bn_relu_{i}',
+                module=ConvBnRelu(
+                    in_channels=in_ch,
+                    out_channels=out_ch,
+                    kernel_size=3,
+                    padding=1,
+                    **common_conv_params
+                )
+            )
+            if i < 3:
+                cnn.add_module(
+                    name=f'pool_{i}',
+                    module=nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 1))
+                )
+        return cnn
+
+    def _make_rnn(self):
+        """ Method makes RNN part of encoder
+
+        :return: CNN Sequential
+        """
+        rnn = nn.Sequential()
+        for i in range(self.rnn_depth):
+            hidden_size = self.hidden_dim
+            if i == 0:
+                in_channels = self.filters_tuple[-1]
+                out_size = self.hidden_dim
+            elif i == (self.rnn_depth - 1):
+                in_channels = self.hidden_dim
+                out_size = self.num_classes
+            else:
+                in_channels = out_size = self.hidden_dim
+            rnn_params = dict(
+                in_channels=in_channels,
+                hidden_size=hidden_size,
+                out_size=out_size,
+                rnn_type=self.rnn_type
+            )
+            rnn.add_module(f'rnn_block_{i}', RNNModule(**rnn_params))
+
+        return rnn
 
     def forward(self, x):
-        # conv features
-
-        # conv_features = self._make_encoder_forward(x)
-        # last_feature = conv_features[self.feat_idx]
-
-        last_feature = self.cnn(x)                            # b_s x 512 x 1 x 16
-        # b, c, h, w = conv.size()
-        # assert h == 1, "the height of conv must be 1"
+        last_feature = self.cnn(x)
         avg_pool_feature = self.avgpool(last_feature)
-        squeezed_feature = avg_pool_feature.squeeze(2)        # b_s x 512 x 16
-        permuted_feature = squeezed_feature.permute(2, 0, 1)  # [w, b, c]
-        # rnn features
+        squeezed_feature = avg_pool_feature.squeeze(2)
+        permuted_feature = squeezed_feature.permute(2, 0, 1)
         output = self.rnn(permuted_feature)
-
-        # print(last_feature.size())
-        # print(avg_pool_feature.size())
-        # print(squeezed_feature.size())
-        # print(permuted_feature.size())
-        # print('out', output.shape)
 
         return output
 
 
 if __name__ == '__main__':
-    backbone_name = 'resnet34'
-    # backbone_name = 'se_resnext50'
+    # backbone_name = 'resnet34'
+    backbone_name = 'se_resnext50'
     input_size = (3, 256, 256)
 
-    model = CRNN(
+    model = CRNNFactory(
         backbone=backbone_name, depth=5, num_classes=10, pretrained='imagenet',
         unfreeze_encoder=True, custom_enc_start=False, num_input_channels=3,
         bn_type='default', conv_type='default', depthwise=False

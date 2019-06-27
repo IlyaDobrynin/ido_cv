@@ -43,11 +43,25 @@ class FPNFactory(EncoderCommon):
             se_decoder:         Flag to include squeeze & excitation layers in decoder line
         """
 
-    def __init__(self, backbone, depth=4, num_classes=1, num_filters=32, pretrained='imagenet',
-                 unfreeze_encoder=True, custom_enc_start=False, num_input_channels=3,
-                 dropout_rate=0.2, upscale_mode='nearest', depthwise=False,
-                 bn_type='default', conv_type='default', residual=False, gau=False,
-                 se_decoder=False):
+    def __init__(
+            self,
+            backbone:               str,
+            depth:                  int = 5,
+            num_classes:            int = 1,
+            num_filters:            int = 32,
+            pretrained:             str = 'imagenet',
+            unfreeze_encoder:       bool = True,
+            custom_enc_start:       bool = False,
+            num_input_channels:     int = 3,
+            dropout_rate:           float = 0.2,
+            bn_type:                str = 'default',
+            conv_type:              str = 'default',
+            upscale_mode:           str = 'nearest',
+            depthwise:              bool = False,
+            residual:               bool = False,
+            gau:                    bool = False,
+            se_decoder:             bool = False
+    ):
 
         super(FPNFactory, self).__init__(backbone=backbone,
                                          pretrained=pretrained,

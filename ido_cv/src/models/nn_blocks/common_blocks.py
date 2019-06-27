@@ -5,8 +5,9 @@
 """
 
 from torch import nn
-from .custom_layers.sync_batchnorm import SynchronizedBatchNorm2d
-from .custom_layers.partial_conv import PartialConv2d
+from .custom_layers import SynchronizedBatchNorm2d
+from .custom_layers import PartialConv2d
+from .custom_layers import Conv2dSamePad
 
 
 class DepthwiseConv2d(nn.Module):
@@ -18,6 +19,8 @@ class DepthwiseConv2d(nn.Module):
             conv = nn.Conv2d
         elif conv_type == 'partial':
             conv = PartialConv2d
+        elif conv_type == 'same':
+            conv = Conv2dSamePad
         else:
             raise ValueError(
                 'Wrong type of convolution: {}. Should be "default" or "partial"'.format(
@@ -61,6 +64,8 @@ class Conv(nn.Module):
                 self.conv = nn.Conv2d(**conv_parameters)
             elif conv_type == 'partial':
                 self.conv = PartialConv2d(**conv_parameters)
+            elif conv_type == 'same':
+                self.conv = Conv2dSamePad(**conv_parameters)
             else:
                 raise ValueError(
                     f'Wrong type of convolution: {conv_type}. '

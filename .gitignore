@@ -2,8 +2,8 @@
 ### Example user template template
 ### Example user template
 
-data
-output
+/data
+/output
 
 # IntelliJ project files
 .idea

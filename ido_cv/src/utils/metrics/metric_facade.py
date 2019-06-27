@@ -18,7 +18,7 @@ metrics_tasks = {
 }
 
 
-class MetricsFacade:
+class MetricFacade:
     """
         Class realize facade pattern for all metrics
         Arguments:
@@ -52,4 +52,4 @@ class MetricsFacade:
 
 
 if __name__ == '__main__':
-    facade_class = MetricsFacade(task='segmentation')
+    facade_class = MetricFacade(task='segmentation')

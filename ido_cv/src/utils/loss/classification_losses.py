@@ -9,7 +9,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-# BINARY
+##################### BINARY #####################
 
 
 class BCELoss(nn.Module):
@@ -23,7 +23,7 @@ class BCELoss(nn.Module):
         return loss
 
 
-# MULTICLASS
+##################### MULTICLASS ##################
 
 
 class NllLoss(nn.Module):

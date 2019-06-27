@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-    Facade for all models classes
+    Facade for losses
 
 """
 from . import classification_losses
@@ -43,7 +43,7 @@ losses_dict = {
 }
 
 
-class LossesFacade:
+class LossFacade:
     """
         Class realize facade pattern for all models
         Arguments:
@@ -92,4 +92,4 @@ class LossesFacade:
 
 
 if __name__ == '__main__':
-    facade_class = LossesFacade(task='segmentation', mode='multi', loss_name='bce_jaccard')
+    facade_class = LossFacade(task='segmentation', mode='multi', loss_name='bce_jaccard')
