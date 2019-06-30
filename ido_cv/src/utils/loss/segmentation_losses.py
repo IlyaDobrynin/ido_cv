@@ -54,7 +54,11 @@ class BinaryBceMetric(nn.Module):
                     f"Metric {self.metric} doesn't implemented. "
                     f"Should be 'jaccard', 'dice', 'lovasz' or None."
                 )
-            loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
+            if self.metric == 'lovasz':
+                loss = self.alpha * bce_loss - (1 - self.alpha) * metric_coef
+            else:
+                # loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
+                loss = self.alpha * bce_loss + (1 - self.alpha) * (1 - metric_coef)
         else:
             loss = bce_loss
         return loss

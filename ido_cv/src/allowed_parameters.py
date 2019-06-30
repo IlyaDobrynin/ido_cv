@@ -26,12 +26,18 @@ LOSS_PARAMETERS = {
             "bce_jaccard": dict(
                 metric='jaccard',
                 weight_type=None,
-                alpha=0.4
+                alpha=0.7
             ),
             "bce_dice": dict(
                 metric='dice',
                 weight_type=None,
-                alpha=0.4
+                alpha=0.7
+            ),
+            "bce_lovasz": dict(
+                metric='lovasz',
+                weight_type=None,
+                alpha=0.4,
+                per_image=True
             )
         },
         'multi': {

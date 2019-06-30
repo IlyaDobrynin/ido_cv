@@ -17,6 +17,7 @@ def prediction(
         tta_list: list = None,
         threshold: (list, float) = None,
         postprocess: bool = False,
+        with_labels: bool = True,
         show_preds: bool = False,
         save_preds: bool = False,
         output_path: str = '',
@@ -46,7 +47,8 @@ def prediction(
         dataloader=test_loader,
         tta_list=tta_list,
         save_batch=save_preds,
-        save_dir=output_path
+        save_dir=output_path,
+        with_labels=with_labels
     )
 
     del test_loader
@@ -64,6 +66,9 @@ def prediction(
         #     )
 
         if show_preds:
-            pipeline.visualize_preds(preds=test_preds)
+            pipeline.visualize_preds(
+                preds=test_preds,
+                threshold=threshold,
+                with_labels=with_labels)
 
     return test_preds

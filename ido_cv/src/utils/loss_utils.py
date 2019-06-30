@@ -137,12 +137,13 @@ def lovasz_hinge_flat(logits, labels):
         # only void pixels, the gradients should be 0
         return logits.sum() * 0.
     signs = 2. * labels.float() - 1.
-    errors = (1. - logits * torch.Tensor(signs))
+    # errors = (1. - logits * torch.Tensor(signs))
+    errors = (1. - logits * torch.autograd.Variable(signs))
     errors_sorted, perm = torch.sort(errors, dim=0, descending=True)
     perm = perm.data
     gt_sorted = labels[perm]
     grad = lovasz_grad(gt_sorted)
-    loss = torch.dot(F.relu(errors_sorted), torch.Tensor(grad))
+    loss = torch.dot(F.relu(errors_sorted), torch.autograd.Variable(grad))
     return loss
 
 

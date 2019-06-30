@@ -10,9 +10,9 @@ import cv2
 import torch
 from torch.utils.data import Dataset
 from albumentations.pytorch.functional import img_to_tensor
-from mts_cv.src.utils.data.encoder_alt import DataEncoder
-from mts_cv.src.utils.image_utils import pad
-from mts_cv.src.utils.image_utils import resize
+from ..data.encoder_alt import DataEncoder
+from ..image_utils import pad
+from ..image_utils import resize
 
 
 class RetinaDataset(Dataset):

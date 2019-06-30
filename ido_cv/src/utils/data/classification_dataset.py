@@ -10,7 +10,7 @@ import pandas as pd
 import torch
 from albumentations.pytorch.functional import img_to_tensor
 from torch.utils.data import Dataset
-from mts_cv.src.utils.image_utils import draw_images
+from ..image_utils import draw_images
 
 
 class ClassifyDataset(Dataset):

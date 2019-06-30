@@ -671,6 +671,7 @@ class Pipeline(AbstractPipeline):
             dataloader: DataLoader,
             tta_list:   list = None,
             save_batch: bool = False,
+            with_labels: bool = False,
             save_dir:   str = ''
     ) -> dict:
         """ Function to make predictions
@@ -697,7 +698,7 @@ class Pipeline(AbstractPipeline):
         predictions = predict(
             model=model,
             dataloader=dataloader,
-            with_labels=False,
+            with_labels=with_labels,
             allocate_on=self.allocate_on,
             task=self.task,
             mode=self.mode,
@@ -775,6 +776,8 @@ class Pipeline(AbstractPipeline):
     def visualize_preds(
             self,
             preds:       dict,
+            threshold: float = 0.1,
+            with_labels: bool = False
     ):
         """ Function for simple visualization
 
@@ -793,16 +796,28 @@ class Pipeline(AbstractPipeline):
             names = preds['names']
             images = preds['images']
             masks = preds['labels_pred']
+
+            if with_labels:
+                masks_true = preds['labels_true']
+
             # Get visualization for binary segmentation task
             if self.mode == 'binary':
 
-                for name, image, mask in zip(names, images, masks):
-                    # h, w = image.shape[:2]
-                    # mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+                for i in range(len(names)): #name, image, mask in zip(names, images, masks):
+                    name = names[i]
+                    image = images[i]
+                    mask_p = masks[i]
+
+                    if with_labels:
+                        mask_t = masks_true[i]
                     msk_img = np.copy(image)
-                    matching = np.all(np.expand_dims(mask, axis=-1) > 0.1, axis=-1)
+                    matching = np.all(np.expand_dims(mask_p, axis=-1) > threshold, axis=-1)
                     msk_img[matching, :] = [0, 0, 0]
-                    draw_images([image, mask, msk_img])
+
+                    if with_labels:
+                        draw_images([image, (mask_p > threshold).astype(np.uint8), msk_img, mask_t])
+                    else:
+                        draw_images([image, (mask_p > threshold).astype(np.uint8), msk_img])
 
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'

@@ -6,7 +6,7 @@ import cv2
 import torch
 from torch.utils.data import Dataset
 from albumentations.pytorch.functional import img_to_tensor
-from mts_cv.src.utils.image_utils import draw_images
+from ..image_utils import draw_images
 
 
 class OCRDataset(Dataset):

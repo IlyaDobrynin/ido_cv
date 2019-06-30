@@ -62,7 +62,7 @@ def main_pipe(args):
         path_to_weights=args['path_to_weights'],
         model_parameters=args['model_parameters'],
         verbose=True,
-        show_model=True
+        show_model=args['show_model_info']
     )
     args['first_epoch'] = initial_parameters['epoch']
     args['first_step'] = initial_parameters['step']

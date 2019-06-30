@@ -12,7 +12,8 @@ losses_dict = {
     'segmentation': {
         'binary': {
             "bce_jaccard": segmentation_losses.BinaryBceMetric,
-            "bce_dice": segmentation_losses.BinaryBceMetric
+            "bce_dice": segmentation_losses.BinaryBceMetric,
+            "bce_lovasz": segmentation_losses.BinaryBceMetric
         },
         'multi': {
             "bce_jaccard": segmentation_losses.MultiBceMetric,

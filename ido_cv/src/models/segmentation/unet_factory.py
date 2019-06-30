@@ -350,7 +350,8 @@ class UnetFactory(EncoderCommon):
                 else:
                     skip = [encoder_list[neg_i - 1]]
             x = decoder_layer(x, skip)
-            decoder_list.append(x.clone())
+            # decoder_list.append(x.clone())
+            decoder_list.append(x)
         return x, decoder_list
 
     def _make_dilation_bottleneck(self, x):
