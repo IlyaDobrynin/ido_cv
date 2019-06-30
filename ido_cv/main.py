@@ -24,6 +24,9 @@ def main_pipe(args):
     :param args: Initial parameters
     :return:
     """
+
+    print("Я ТУТ ИЗ ПРОЕКТА ПНЕВМОТОРАКС")
+
     if args['device_ids'][0] == -1:
         allocate_on = 'cpu'
     else:
