@@ -13,7 +13,7 @@ from .custom_layers import Conv2dSamePad
 class DepthwiseConv2d(nn.Module):
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, bias=True, conv_type='default'):
+                 padding=0, dilation=1, bias=True, groups=None, conv_type='default'):
         super(DepthwiseConv2d, self).__init__()
         if conv_type == 'default':
             conv = nn.Conv2d
