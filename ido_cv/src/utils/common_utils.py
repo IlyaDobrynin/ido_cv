@@ -3,6 +3,7 @@
     Some helper functions
 """
 import os
+import gc
 import math
 from hashlib import sha1
 import numpy as np
@@ -12,47 +13,79 @@ import torch
 import torch.nn as nn
 
 
-def rle_encode(image: np.ndarray) -> list:
+def rle_encode(image: np.ndarray, mode: str = 'absolute') -> list:
     """ Function to perform run-length encoding for the given image
 
-    :param img: numpy array, 1 - mask, 0 - background
+    :param img:     numpy array, 1 - mask, 0 - background
+    :param mode:    Mode:
+                        - absolute -    every line of pixels on image starts with
+                                        it absolute pixel, e. g. '3 5 13 6' means that
+                                        pixels 3,4,5,6,7 and 13,14,15,16,17,18 have mask
+                        - 'relative' -  first line of pixels starts with its position,
+                                        next lines starts with its relative position to
+                                        the end of previous line, e. g. '3, 5, 5, 6'
+                                        means that pixels 3,4,5,6,7 and 13,14,15,16,17,18 have mask
     Returns run length as string formated
     """
     image_ = np.copy(image)
     pixels = image_.flatten()
     pixels = np.concatenate([[0], pixels, [0]])
     # pixels = np.concatenate([[0], pixels])
-    runs = np.where(pixels[1:] != pixels[:-1])[0] + 1
-    runs[1::2] -= runs[::2]
-    # print(runs)
-    # starts = [runs[i] for i in range(0, len(runs), 2)]
-    # lengths = [runs[i] for i in range(1, len(runs), 2)]
-    # rle_list = [(s, l) for s, l in zip(starts, lengths)]
-
+    # print(pixels)
+    if mode == 'absolute':
+        runs = np.where(pixels[1:] != pixels[:-1])[0]
+        runs[1::2] -= runs[::2]
+    elif mode == 'relative':
+        runs = np.where(pixels[1:] != pixels[:-1])[0]
+        runs[1::2] -= runs[::2]
+        runs[2::2] = runs[2::2] - (runs[:-2:2] + runs[1:-1:2])
+    else:
+        raise ValueError(
+            f'Wrong mode: {mode}. Should be "absolute" or "relative"'
+        )
     return runs
-    # return ' '.join(str(x) for x in runs)
 
 
-def rle_decode(rle_list: list, shape: tuple, fill_value: int = 1):
+def rle_decode(rle_list: list, shape: tuple, fill_value: int = 1, mode: str = 'absolute'):
     """ Function to perform run-length decoding for the given encoded list
 
-    :param rle_list: run-length as list formated [(start, length)]
-    :param shape: (height, width) of array to return
-    :param fill_value: Value to fill
+    :param rle_list:    run-length as list formated [(start, length)]
+    :param shape:       (height, width) of array to return
+    :param fill_value:  Value to fill
+    :param mode:        Mode:
+                        - absolute -    every line of pixels on image starts with
+                                        it absolute pixel, e. g. '3 5 13 6' means that
+                                        pixels 3,4,5,6,7 and 13,14,15,16,17,18 have mask
+                        - 'relative' -  first line of pixels starts with its position,
+                                        next lines starts with its relative position to
+                                        the end of previous line, e. g. '3, 5, 5, 6'
+                                        means that pixels 3,4,5,6,7 and 13,14,15,16,17,18 have mask
     Returns numpy array, fill_value - mask, 0 - background
     """
-    # s = rle_list.split()
-    starts = np.asarray([x for x in rle_list[0:][::2]], dtype=int)
-    lengths = np.asarray([x for x in rle_list[1:][::2]], dtype=int)
-    # starts, lengths = [np.asarray(x, dtype=int) for x in (s[0:][::2], s[1:][::2])]
-    #
-    # print(starts)
-    # print(lengths)
-    starts -= 1
-    ends = starts + lengths
     img = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    if mode == 'absolute':
+        starts = np.asarray([x for x in rle_list[0:][::2]], dtype=int)
+        lengths = np.asarray([x for x in rle_list[1:][::2]], dtype=int)
+        ends = starts + lengths
+
+    elif mode == 'relative':
+        starts = []
+        ends = []
+        for i in range(0, len(rle_list), 2):
+            if i == 0:
+                starts.append(rle_list[0])
+                ends.append(sum(rle_list[:2]))
+            else:
+                starts.append(sum(rle_list[:i + 1]))
+                ends.append(sum(rle_list[:i + 2]))
+    else:
+        raise ValueError(
+            f'Wrong mode: {mode}. Should be "absolute" or "relative"'
+        )
+
     for lo, hi in zip(starts, ends):
         img[lo:hi] = fill_value
+
     return img.reshape(shape)
 
 
