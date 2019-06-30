@@ -187,8 +187,8 @@ def main_pipe(args):
         test_preds = prediction(
             model=model, pipeline=pipe_class, data_path=path_to_test, dataloaders=dataloaders,
             tta_list=args['tta_list'], threshold=threshold, postprocess=args['postproc_test'],
-            output_path=args['output_path'], show_preds=args['show_preds'],
-            save_preds=args['save_test']
+            with_labels=args['predict_with_labels'], output_path=args['output_path'],
+            show_preds=args['show_preds'], save_preds=args['save_test']
         )
         return test_preds
 

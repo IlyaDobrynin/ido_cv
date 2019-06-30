@@ -17,7 +17,7 @@ def prediction(
         tta_list: list = None,
         threshold: (list, float) = None,
         postprocess: bool = False,
-        with_labels: bool = True,
+        with_labels: bool = False,
         show_preds: bool = False,
         save_preds: bool = False,
         output_path: str = '',

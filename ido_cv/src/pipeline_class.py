@@ -709,73 +709,9 @@ class Pipeline(AbstractPipeline):
 
         return predictions
 
-    # def postprocessing(
-    #         self,
-    #         predictions:    dict,
-    #         threshold:      (list, float) = 0.,
-    #         hole_size:      int = None,
-    #         obj_size:       int = None,
-    #         save:           bool = False,
-    #         save_dir:       str = ''
-    # ) -> pd.DataFrame:
-    #     """ Function for predicted data postprocessing
-    #
-    #     :param pred_df:     Dataset with predicted images and masks
-    #     :param threshold:   Binarization thresholds
-    #     :param hole_size:   Minimum hole size to fill
-    #     :param obj_size:    Minimum obj size
-    #     :param save:        Flag to save results
-    #     :param save_dir:    Save directory
-    #     :return:
-    #     """
-    #
-    #     if self.task == 'segmentation':
-    #         if self.mode == 'binary':
-    #             masks = np.copy(predictions['labels_pred'].values)
-    #
-    #             postproc_masks = [
-    #                 delete_small_instances(
-    #                     (mask > threshold).astype(np.uint8), obj_size=obj_size, hole_size=hole_size
-    #                 ) for mask in masks
-    #             ]
-    #             predictions['labels_pred'] = postproc_masks
-    #
-    #         else:  # self.mode == 'multi'
-    #             postproc_masks = []
-    #             masks = np.copy(pred_df['masks'].values)
-    #             for mask in masks:
-    #                 threshold = [threshold] * mask.shape[-1] if type(threshold) == float \
-    #                     else threshold
-    #                 postproc_mask = np.zeros(shape=mask.shape[:2], dtype=np.uint8)
-    #                 for ch in range(0, mask.shape[-1]):
-    #                     if ch == 0:
-    #                         threshold_0 = 0.5
-    #                         mask_ch = (mask[:, :, ch] > threshold_0).astype(np.uint8)
-    #                     else:
-    #                         mask_ch = (mask[:, :, ch] > threshold[ch - 1]).astype(np.uint8)
-    #                     mask_ch = delete_small_instances(
-    #                         mask_ch,
-    #                         obj_size=obj_size,
-    #                         hole_size=hole_size
-    #                     )
-    #                     postproc_mask[mask_ch > 0] = ch
-    #
-    #                 postproc_masks.append(postproc_mask)
-    #             pred_df['masks'] = postproc_masks
-    #
-    #             # Save result
-    #             if save:
-    #                 for row in pred_df.iterrows():
-    #                     name = row[1]['names']
-    #                     mask = row[1]['masks']
-    #                     out_path = dirs.make_dir(f'preds/{self.task}/{self.time}', top_dir=save_dir)
-    #                     imsave(fname=os.path.join(out_path, name), arr=mask)
-    #
-    #     return pred_df
-
     def visualize_preds(
             self,
-            preds:       dict,
+            preds: dict,
             threshold: float = 0.1,
             with_labels: bool = False
     ):
@@ -810,9 +746,19 @@ class Pipeline(AbstractPipeline):
 
                     if with_labels:
                         mask_t = masks_true[i]
-                    msk_img = np.copy(image)
-                    matching = np.all(np.expand_dims(mask_p, axis=-1) > threshold, axis=-1)
-                    msk_img[matching, :] = [0, 0, 0]
+
+                    mask = np.dstack((mask_p, mask_p, mask_p)) * np.array([0, 0, 255])
+                    mask = mask.astype(np.float32) / 255  # mask = mask.astype(np.float64)/255
+                    import cv2
+                    weighted_sum = cv2.addWeighted(mask, 0.15, image, 1 - 0.15, 0.)
+                    msk_img = image.copy()
+                    ind = mask[:, :, 1] > 0
+                    msk_img[ind] = weighted_sum[ind]
+
+
+                    # msk_img = np.copy(image)
+                    # matching = np.all(np.expand_dims(mask_p, axis=-1) > threshold, axis=-1)
+                    # msk_img[matching, :] = [0, 0, 0]
 
                     if with_labels:
                         draw_images([image, (mask_p > threshold).astype(np.uint8), msk_img, mask_t])
