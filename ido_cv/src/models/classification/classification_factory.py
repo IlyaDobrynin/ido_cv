@@ -10,10 +10,20 @@ from ..nn_blocks.encoders import EncoderCommon
 
 
 class ClassifierFactory(EncoderCommon):
-    def __init__(self, backbone: str, depth: int, num_classes: int, avg_pool_kernel: int = 7,
-                 pretrained: str = 'imagenet', unfreeze_encoder: bool = True,
-                 custom_enc_start: bool = False, num_input_channels: int = 3,
-                 conv_type: str = 'default', bn_type: str = 'default', depthwise: bool = False):
+    def __init__(
+            self,
+            backbone: str,
+            depth: int,
+            num_classes: int,
+            avg_pool_kernel: int = 7,
+            pretrained: str = 'imagenet',
+            unfreeze_encoder: bool = True,
+            custom_enc_start: bool = False,
+            num_input_channels: int = 3,
+            conv_type: str = 'default',
+            bn_type: str = 'default',
+            depthwise: bool = False
+    ):
 
         super(ClassifierFactory, self).__init__(
             backbone=backbone,
@@ -31,14 +41,18 @@ class ClassifierFactory(EncoderCommon):
             f"Wrong name of backbone: {backbone}. " \
                 f"Should be in backbones.backbone_factory.backbones.keys()"
 
+        self.avg_pool_kernel = avg_pool_kernel
         self.avgpool = nn.AvgPool2d(avg_pool_kernel)
         self.fc = nn.Linear(self.encoder_filters[depth - 1], num_classes)
 
     def forward(self, x):
         encoder_list = self._make_encoder_forward(x)
         out = encoder_list[-1]
+        # print(out.shape)
         out = self.avgpool(out)
+        # print(out.shape)
         out = out.view(out.size(0), -1)
+        # print(out.shape)
         out = self.fc(out)
         return out
 
