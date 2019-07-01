@@ -136,9 +136,19 @@ class DecoderBlockResidual(nn.Module):
     link https://distill.pub/2016/deconv-checkerboard/
     """
 
-    def __init__(self, in_skip_ch, in_dec_ch, out_channels, residual_depth=2, dropout_rate=0.2,
-                 se_include=False, depthwise=False, upscale_mode='nearest', bn_type='default',
-                 conv_type='default'):
+    def __init__(
+            self,
+            in_skip_ch: int,
+            in_dec_ch: int,
+            out_channels: int,
+            residual_depth: int = 2,
+            dropout_rate: float = 0.2,
+            se_include: bool = False,
+            depthwise: bool = False,
+            upscale_mode: str = 'nearest',
+            bn_type: str = 'default',
+            conv_type: str = 'default'
+    ):
         super(DecoderBlockResidual, self).__init__()
         self.se_include = se_include
         self.upscale_mode = upscale_mode
