@@ -130,30 +130,6 @@ class UnetFactory(EncoderCommon):
             self.decoder_filters.append(self.num_filters * (2 ** i))
         self.decoder_layers = self._get_decoder()
 
-        # Make first encoder layer
-        first_layer_parameters = dict(
-            out_channels=self.decoder_filters[0],
-            kernel_size=3,
-            padding=1,
-            depthwise=self.depthwise,
-            bn_type=self.bn_type,
-            conv_type=self.conv_type
-        )
-        self.first_layer = nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_bn_relu_1", ConvBnRelu(
-                        in_channels=self.num_input_channels,
-                        **first_layer_parameters
-                    )),
-                    ("conv_bn_relu_2", ConvBnRelu(
-                        in_channels=self.decoder_filters[0],
-                        **first_layer_parameters
-                    ))
-                ]
-            )
-        )
-
         if self.mid_block is not None:
             if self.mid_block == 'dilation':
                 self.dilate_depth = dilate_depth
@@ -206,9 +182,8 @@ class UnetFactory(EncoderCommon):
         if self.hypercolumn:
             self.hypercolumn_layers = self._get_hypercolumn_layers()
             hypercolumn_parameters = dict(
-                in_channels=self.num_filters * (len(self.decoder_layers) + 1),
-                # in_channels=self.num_filters,
-                out_channels=self.num_filters,
+                in_channels=self.decoder_filters[0] * (self.depth - 1),
+                out_channels=self.decoder_filters[1],
                 kernel_size=1,
                 depthwise=self.depthwise,
                 conv_type=self.conv_type
@@ -221,7 +196,7 @@ class UnetFactory(EncoderCommon):
 
         # Make final layer
         self.final_layer = nn.Conv2d(
-            in_channels=self.num_filters,
+            in_channels=self.decoder_filters[0],
             out_channels=self.num_classes,
             kernel_size=1
         )
@@ -278,16 +253,12 @@ class UnetFactory(EncoderCommon):
         :return: List of gau layers
         """
         se_layers = nn.ModuleList([])
-        for i in range(self.depth):
+        for i in range(self.depth - 1):
             rev_i = (self.depth - 1) - i
-            if rev_i == 0:
-                channel = self.decoder_filters[0]
-            else:
-                channel = self.encoder_filters[rev_i - 1]
-
+            channel = self.encoder_filters[rev_i - 1]
             se_block = SCSEBlock(
                 channel=channel,
-                reduction=16
+                reduction=8
             )
             se_layers.append(se_block)
         return se_layers
@@ -304,19 +275,14 @@ class UnetFactory(EncoderCommon):
                 in_dec_ch = self.encoder_filters[rev_i]
                 in_skip_ch = self.encoder_filters[rev_i - 1]
             elif rev_i == 0:
+                # in_dec_ch = self.decoder_filters[rev_i + 1]
                 in_dec_ch = self.decoder_filters[rev_i + 1]
-                in_skip_ch = self.decoder_filters[0]
+                in_skip_ch = None
             else:
                 in_dec_ch = self.decoder_filters[rev_i + 1]
                 in_skip_ch = self.encoder_filters[rev_i - 1]
 
             out_channels = self.decoder_filters[rev_i]
-
-            # print('-' * 64)
-            # print('_get_decoder.i', i)
-            # print('_get_decoder.in_dec_ch', in_dec_ch)
-            # print('_get_decoder.in_skip_ch', in_skip_ch)
-            # print('_get_decoder.out_channels', out_channels)
 
             decoder_parameters = dict(
                 in_skip_ch=in_skip_ch,
@@ -346,31 +312,29 @@ class UnetFactory(EncoderCommon):
         :return: List of hypercolumn layers
         """
         hc_layers = nn.ModuleList([])
-        for i in range(self.depth + 1):
-            if i == 0:
-                in_channels = self.encoder_filters[self.depth - 1]
-            else:
-                in_channels = self.decoder_filters[-i]
-            out_channels = self.num_filters
+        for i in range(self.depth - 1):
+            neg_i = -(i + 1)
+
+            in_channels = self.decoder_filters[neg_i]
+            out_channels = self.decoder_filters[0]
+
             hc_parameters = dict(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=1,
+                kernel_size=3,
+                padding=1,
                 depthwise=self.depthwise,
-                conv_type=self.conv_type
+                conv_type=self.conv_type,
+                bn_type=self.bn_type
             )
             hc_layers.append(
-                # Conv(
-                #     **hc_parameters
-                # )
                 ConvBnRelu(
-                    bn_type=self.bn_type,
                     **hc_parameters
                 )
             )
         return hc_layers
 
-    def _make_decoder_forward(self, x, first_skip, encoder_list):
+    def _make_decoder_forward(self, x, encoder_list):
         """ Function to make u-net decoder
 
         :param x: Input tenzor
@@ -379,12 +343,11 @@ class UnetFactory(EncoderCommon):
         :return: Last layer tensor and list of decoder tensors
         """
         decoder_list = []
-        for i, decoder_layer in enumerate(self.decoder_layers):
+        for i in range(len(self.decoder_layers) - 1):
+
             neg_i = -(i + 1)
-            if i == len(self.decoder_layers) - 1:
-                skip_layer = first_skip
-            else:
-                skip_layer = encoder_list[neg_i - 1]
+            decoder_layer = self.decoder_layers[i]
+            skip_layer = encoder_list[neg_i - 1]
 
             if self.skip_gau:
                 skip = [self.gau_layers[i](skip_layer, x)]
@@ -415,7 +378,7 @@ class UnetFactory(EncoderCommon):
         gc.collect()
         return x
 
-    def _make_hypercolumn_forward(self, encoder_last: torch.Tensor, decoder_list: list):
+    def _make_hypercolumn_forward(self, decoder_list: list):
         """ Makes variation of hypercolumn layer (https://arxiv.org/abs/1411.5752.pdf)
 
         :param encoder_last: last layer of encoder
@@ -425,12 +388,13 @@ class UnetFactory(EncoderCommon):
         hc = []
         h, w = decoder_list[-1].size(2), decoder_list[-1].size(3)
 
-        first_hc = self.hypercolumn_layers[0](encoder_last)
-        first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
+        # first_hc = self.hypercolumn_layers[0](encoder_last)
+        # first_hc = F.interpolate(first_hc, size=(h, w), mode='bilinear', align_corners=False)
         # hc.append(first_hc.unsqueeze(-1))
-        hc.append(first_hc)
-        for i, decoder in enumerate(decoder_list):
-            hc_layer = self.hypercolumn_layers[i + 1](decoder)
+        # hc.append(first_hc)
+        for i in range(len(decoder_list)):
+            decoder_layer = decoder_list[i]
+            hc_layer = self.hypercolumn_layers[i](decoder_layer)
             hc_layer = F.interpolate(hc_layer, size=(h, w), mode='bilinear', align_corners=False)
             # hc.append(hc_layer.unsqueeze(-1))
             hc.append(hc_layer)
@@ -447,7 +411,7 @@ class UnetFactory(EncoderCommon):
         """
         Defines the computation performed at every call.
         """
-        first_skip = self.first_layer(x)
+        h_in, w_in = x.size()[2], x.size()[3]
 
         # Get encoder features
         encoder_list = self._make_encoder_forward(x)
@@ -467,14 +431,17 @@ class UnetFactory(EncoderCommon):
             bottleneck = self.vortex(bottleneck)
 
         # Get decoder features
-        x, decoder_list = self._make_decoder_forward(bottleneck, first_skip, encoder_list)
-        last_encoder_layer = encoder_list[-1]
-        del encoder_list, bottleneck, first_skip
+        x, decoder_list = self._make_decoder_forward(bottleneck, encoder_list)
+        del encoder_list, bottleneck
         gc.collect()
 
         # Make hypercolumn
         if self.hypercolumn:
-            x = self._make_hypercolumn_forward(last_encoder_layer, decoder_list)
+            x = self._make_hypercolumn_forward(decoder_list)
+
+        # Last decoder layer
+        x = F.interpolate(x, size=(h_in, w_in), mode=self.upscale_mode)
+        x = self.decoder_layers[-1](x)
 
         # Make final layer
         x = self.final_layer(x)

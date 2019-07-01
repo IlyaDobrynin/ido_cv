@@ -25,8 +25,6 @@ def main_pipe(args):
     :return:
     """
 
-    print("Я ТУТ ИЗ ПРОЕКТА ПНЕВМОТОРАКС")
-
     if args['device_ids'][0] == -1:
         allocate_on = 'cpu'
     else:
@@ -115,8 +113,10 @@ def main_pipe(args):
     )
     test_loader = pipe_class.get_dataloaders(
         path_to_dataset=path_to_test,
+        # path_to_dataset=path_to_holdout,
         batch_size=args['batch_size'],
         is_train=False,
+        # is_train=True,
         shuffle=False,
         **common_dataloader_parameters
     )

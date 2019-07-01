@@ -16,9 +16,14 @@ class DecoderBlock(nn.Module):
                  upscale_mode='nearest', bn_type='default', conv_type='default', se_include=False,
                  se_reduction=16):
         super(DecoderBlock, self).__init__()
-        in_channels = in_skip_ch + in_dec_ch
+
         self.se_include = se_include
         self.upscale_mode = upscale_mode
+
+        if in_skip_ch is not None:
+            in_channels = in_skip_ch + in_dec_ch
+        else:
+            in_channels = in_dec_ch
 
         # Initialize layers
         conv_params = dict(
@@ -36,11 +41,14 @@ class DecoderBlock(nn.Module):
         if self.se_include:
             self.se_block = SCSEBlock(out_channels, reduction=se_reduction)
 
-    def forward(self, x, skip):
-        h, w = skip[0].size()[2], skip[0].size()[3]
-        x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
-        skip.append(x)
-        x = torch.cat(skip, 1)
+    def forward(self, x, skip=None):
+
+        if skip is not None:
+            h, w = skip[0].size()[2], skip[0].size()[3]
+            x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
+            skip.append(x)
+            x = torch.cat(skip, 1)
+
         x = self.dropout(x)
         x = self.conv_bn_relu(x)
         x = self.conv(x)
@@ -134,8 +142,14 @@ class DecoderBlockResidual(nn.Module):
         super(DecoderBlockResidual, self).__init__()
         self.se_include = se_include
         self.upscale_mode = upscale_mode
+
+        if in_skip_ch is not None:
+            in_channels = in_skip_ch + in_dec_ch
+        else:
+            in_channels = in_dec_ch
+
         self.conv = Conv(
-            in_channels=in_skip_ch + in_dec_ch,
+            in_channels=in_channels,
             out_channels=out_channels,
             kernel_size=1,
             conv_type=conv_type,
@@ -155,11 +169,13 @@ class DecoderBlockResidual(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout2d(p=dropout_rate)
 
-    def forward(self, x, skip):
-        h, w = skip[0].size()[2], skip[0].size()[3]
-        x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
-        skip.append(x)
-        x = torch.cat(skip, dim=1)
+    def forward(self, x, skip=None):
+        if skip is not None:
+            h, w = skip[0].size()[2], skip[0].size()[3]
+            x = F.interpolate(x, size=(h, w), mode=self.upscale_mode)
+            skip.append(x)
+            x = torch.cat(skip, dim=1)
+
         x = self.conv(x)
         x = self.dropout(x)
         for i, res_layer in enumerate(self.residual_layers):

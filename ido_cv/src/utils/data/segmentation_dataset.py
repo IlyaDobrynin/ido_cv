@@ -29,7 +29,7 @@ class BinSegDataset(Dataset):
     def __init__(
             self,
             train:          bool,
-            add_depth:      bool = False,
+            add_depth:      bool = True,
             data_path:      str = None,
             data_file:      pd.DataFrame = None,
             common_augs     =None,
@@ -84,8 +84,7 @@ class BinSegDataset(Dataset):
             data = {'image': image, 'mask': mask}
             augmented = self.train_time_augs(**data)
             image, mask = augmented['image'], augmented['mask']
-        if self.add_depth:
-            image = add_depth_channels(img_to_tensor(image))
+
 
         # image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if len(image.shape) == 2:
@@ -95,6 +94,9 @@ class BinSegDataset(Dataset):
 
         image = img_to_tensor(image)
         mask = img_to_tensor(mask)
+
+        if self.add_depth:
+            image = add_depth_channels(image)
 
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
@@ -112,14 +114,13 @@ class BinSegDataset(Dataset):
             common_augs = self.common_augs(**data)
             image = common_augs['image']
 
-        if self.add_depth:
-            image = add_depth_channels(img_to_tensor(image))
-
-        # image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if len(image.shape) == 2:
             image = np.expand_dims(image, axis=-1)
 
         image = img_to_tensor(image)
+        if self.add_depth:
+            image = add_depth_channels(image)
+
         if self.show_sample:
             viz_image = np.moveaxis(image.data.numpy(), 0, -1)
             draw_images([viz_image])
