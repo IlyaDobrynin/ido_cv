@@ -1,6 +1,7 @@
 import torch
 from torch.nn import functional as F
 from torch import nn
+from .common_blocks import Conv
 from .common_blocks import ConvBnRelu
 
 
@@ -92,8 +93,8 @@ class FPABlock(nn.Module):
         # global pooling branch
         self.branch1 = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            ConvBnRelu(in_channels, out_channels, kernel_size=1,
-                       stride=1, padding=0, conv_type=conv_type)
+            Conv(in_channels, out_channels, kernel_size=1,
+                 stride=1, padding=0, conv_type=conv_type)
         )
         # midddle branch
         self.mid = nn.Sequential(

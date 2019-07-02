@@ -578,14 +578,14 @@ class Pipeline(AbstractPipeline):
 
     def validation(
             self,
-            model:              nn.Module,
-            dataloader:         DataLoader,
-            metric_names:       list,
-            validation_mode:    str,
-            criterion                =None,
-            tta_list:           list = None,
-            ignore_class:       int = None,
-            verbose:            int = 1,
+            model: nn.Module,
+            dataloader: DataLoader,
+            metric_names: list,
+            validation_mode: str,
+            criterion=None,
+            tta_list: list = None,
+            ignore_class: int = None,
+            verbose: int = 1,
             **kwargs
     ) -> dict:
         """ Function to make validation of the model
@@ -599,6 +599,7 @@ class Pipeline(AbstractPipeline):
         :param criterion:       Function to calculate loss
         :param tta_list:
         :param ignore_class:
+        :param include_empty:   Flag to ignore samples with no mask
         :param verbose:         Flag to include output information
         :return:
         """

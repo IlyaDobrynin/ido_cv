@@ -28,13 +28,13 @@ class BinSegDataset(Dataset):
     
     def __init__(
             self,
-            train:          bool,
-            add_depth:      bool = True,
-            data_path:      str = None,
-            data_file:      pd.DataFrame = None,
-            common_augs     =None,
-            train_time_augs =None,
-            show_sample:    bool = False
+            train: bool,
+            add_depth: bool = False,
+            data_path: str = None,
+            data_file: pd.DataFrame = None,
+            common_augs=None,
+            train_time_augs=None,
+            show_sample: bool = False
     ):
 
         self.train = train

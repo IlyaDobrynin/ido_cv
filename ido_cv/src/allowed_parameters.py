@@ -26,12 +26,12 @@ LOSS_PARAMETERS = {
             "bce_jaccard": dict(
                 metric='jaccard',
                 weight_type=None,
-                alpha=0.7
+                alpha=0.4
             ),
             "bce_dice": dict(
                 metric='dice',
                 weight_type=None,
-                alpha=0.7
+                alpha=0.4
             ),
             "bce_lovasz": dict(
                 metric='lovasz',
@@ -103,6 +103,7 @@ METRIC_PARAMETERS = {
         'binary': dict(
             activation='sigmoid',
             device='cpu'
+            # device='gpu'
         ),
         'multi': dict(
             activation='softmax',

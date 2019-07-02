@@ -11,7 +11,8 @@ def get_opt_threshold(
         trues:          np.ndarray,
         preds:          np.ndarray,
         metric_name:    str,
-        threshold_min:  float = 0.1
+        threshold_min:  float = 0.1,
+        include_empty: bool = False
 ) -> tuple:
     """ Function returns optimal threshold for prediction images
 
@@ -25,8 +26,12 @@ def get_opt_threshold(
     thresholds = np.linspace(0, 1, 50)
     preds_new = [np.uint8(preds > threshold) for threshold in tqdm(thresholds)]
 
-    metrics = np.array([numpy_metric_per_image(trues, pred, metric_name=metric_name)
-                        for pred in tqdm(preds_new)])
+    metrics = np.array([
+        numpy_metric_per_image(
+            trues,
+            pred,
+            metric_name=metric_name
+        ) for pred in tqdm(preds_new)])
 
     threshold_best_index = np.argmax(metrics)
     best_metric = metrics[threshold_best_index]
@@ -38,7 +43,7 @@ def get_opt_threshold(
 def torch_metric_per_image(
         trues: torch.Tensor,
         preds: torch.Tensor,
-        metric_name: str
+        metric_name: str,
 ) -> np.ndarray:
     """ Function returns metrics calculated on GPU via pytorch
 
@@ -91,7 +96,7 @@ def torch_metric_per_image(
 def torch_metric(
         trues: torch.Tensor,
         preds: torch.Tensor,
-        metric_name: str
+        metric_name: str,
 ) -> np.ndarray:
     """ Function returns metrics calculated on GPU via pytorch
 
@@ -129,7 +134,8 @@ def torch_metric(
 def numpy_metric_per_image(
         trues: np.ndarray,
         preds: np.ndarray,
-        metric_name: str
+        metric_name: str,
+        # include_empty: bool = True
 ) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 
@@ -138,6 +144,7 @@ def numpy_metric_per_image(
     :param metric_name: Name of t metric
     :return:
     """
+
     smooth = 1e-12
     metrics = []
     for true, pred in zip(trues, preds):
@@ -148,8 +155,11 @@ def numpy_metric_per_image(
             metrics.append(0)
             continue
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) == 0:
+            # if include_empty:
             metrics.append(1)
             continue
+            # else:
+            #     continue
 
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)
@@ -178,7 +188,7 @@ def numpy_metric_per_image(
 def numpy_metric(
         trues: np.ndarray,
         preds: np.ndarray,
-        metric_name: str
+        metric_name: str,
 ) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 

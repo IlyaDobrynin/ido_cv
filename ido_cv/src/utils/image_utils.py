@@ -231,7 +231,7 @@ def center_crop(img, boxes, size):
     return img, boxes
 
 
-def draw_images(images_list: list, orient: str = 'horizontal'):
+def draw_images(images_list: list, orient: str = 'horizontal', figsize: tuple = (10, 15)):
     """ Function draws images from images_list
 
     :param images_list: List of numpy.ndarray images
@@ -239,7 +239,7 @@ def draw_images(images_list: list, orient: str = 'horizontal'):
     :return:
     """
     n_images = len(images_list)
-    fig = plt.figure()
+    fig = plt.figure(figsize=figsize)
     for i, image in enumerate(images_list):
         if orient == 'horizontal':
             ax = fig.add_subplot(1, n_images, i + 1)
