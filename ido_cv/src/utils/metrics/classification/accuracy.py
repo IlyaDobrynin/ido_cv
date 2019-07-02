@@ -5,10 +5,10 @@ true labels and predicted labels using numpy
 """
 import numpy as np
 import torch
-from ..metric_utils import get_accuracy
+from . import BaseClassificationMetric
 
 
-class ClassificationMetrics:
+class Accuracy(BaseClassificationMetric):
     def __init__(self, mode: str, activation: str):
         # Assertions
         assert mode in ['binary', 'multi'], f'Wrong mode parameter: {mode}. ' \
@@ -18,8 +18,13 @@ class ClassificationMetrics:
 
         self.activation = activation
         self.mode = mode
+        self.metric_name = 'accuracy'
 
-    def get_metric(self, trues: torch.Tensor, preds: torch.Tensor, metric_name: str):
+    def calculate_metric(
+            self,
+            trues: torch.Tensor,
+            preds: torch.Tensor,
+    ):
         trues_ = np.squeeze(trues.data.cpu().numpy(), axis=1).astype(np.uint8)
         # print(trues_.shape, trues_)
 
@@ -36,17 +41,8 @@ class ClassificationMetrics:
                 f'not {self.activation}'
             )
 
-        metric = self.get_metric_value(trues=trues_, preds=preds_, metric_name=metric_name)
+        metric = self.get_metric_value(trues=trues_, preds=preds_, metric_name=self.metric_name)
 
         return metric
 
-    @staticmethod
-    def get_metric_value(trues, preds, metric_name):
-        if metric_name == 'accuracy':
-            metric = get_accuracy(trues=trues, preds=preds)
-        else:
-            raise ValueError(
-                f'Wrong metric_name: {metric_name}.'
-                f' Should be "accuracy"'
-            )
-        return metric
+

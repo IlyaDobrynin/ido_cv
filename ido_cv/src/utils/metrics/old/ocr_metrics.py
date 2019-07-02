@@ -5,7 +5,12 @@ from ..ocr_utils import LabelConverter
 
 
 class OCRMetrics:
-    def __init__(self, mode: str, ignore_case: bool = False, alphabet: str = None):
+    def __init__(
+            self,
+            mode: str,
+            ignore_case: bool = False,
+            alphabet: str = None
+    ):
         assert mode in ['all'], f'Wrong mode parameter: {mode}. ' \
             f'Should be "all".'
         assert type(alphabet) == str, f'Wrong alphabet: {alphabet}. Should be str.'

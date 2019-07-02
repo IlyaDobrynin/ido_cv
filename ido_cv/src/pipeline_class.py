@@ -19,17 +19,16 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
-from .. import dirs
 from . import allowed_parameters
 from .allowed_parameters import ParameterBuilder
 from .models import ModelFacade
 from .utils.data import DatasetFacade
 from .utils.loss import LossFacade
 from .utils.metrics import MetricFacade
+from .utils.metrics.abstract_metric import AbstractMetric
 from .utils.configs import ConfigParser
 from .utils import model_utils
 from .utils.image_utils import draw_images
-from .utils.image_utils import delete_small_instances
 from .utils.pipeline_utils import get_data
 from .utils.pipeline_utils import train_one_epoch
 from .utils.pipeline_utils import validate_train
@@ -131,12 +130,6 @@ class Pipeline(AbstractPipeline):
 
         # Make ParameterBuilder object
         self.parameter_builder = ParameterBuilder(task=self.task, mode=self.mode)
-
-        # Get metrics for training
-        metric_facade = MetricFacade(task=self.task)
-        metric_parameters = self.parameter_builder.get_metric_parameters
-        self.val_metric_class = metric_facade.get_metric(mode=self.mode, **metric_parameters)
-
         self.random_seed = random_seed
         self.time = time
 
@@ -477,9 +470,30 @@ class Pipeline(AbstractPipeline):
             lr=lr,
             **optimizer_parameters
         )
+
+        # Get metrics
+        metric_facade = MetricFacade(task=self.task)
+        metrics_dict = {}
+        for metric_name in metric_names:
+            metric_parameters = self.parameter_builder.get_metric_parameters()
+            if isinstance(metric_name, str):
+                metrics_dict[metric_name] = metric_facade.get_metric_class(
+                    metric_definition=metric_name
+                )(**metric_parameters)
+            elif isinstance(metric_name, AbstractMetric):
+                metrics_dict[str(metric_name)] = metric_facade.get_metric_class(
+                    metric_definition=metric_name
+                )(**metric_parameters)
+
         # Get criterion
-        loss_facade = LossFacade(task=self.task, mode=self.mode, loss_name=loss_name)
-        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+        loss_facade = LossFacade(
+            task=self.task,
+            mode=self.mode,
+            loss_name=loss_name
+        )
+        loss_parameters = self.parameter_builder.get_loss_parameters(
+            loss_name=loss_name
+        )
         criterion = loss_facade.get_loss(**loss_parameters)
         # Get learning rate scheduler policy
         # ToDo: make callbacks facade
@@ -501,7 +515,9 @@ class Pipeline(AbstractPipeline):
         log_file = open(log_path, mode='a', encoding='utf8')
 
         # Make dir for weights save
-        save_weights_path = dirs.make_dir(relative_path='weights', top_dir=save_dir)
+        save_weights_path = os.path.join(save_dir, 'weights')
+        os.makedirs(path=save_weights_path, exist_ok=True)
+
         best_model_wts = copy.deepcopy(model.state_dict())
         
         # Main training loop
@@ -522,7 +538,7 @@ class Pipeline(AbstractPipeline):
             val_metrics = self.validation(
                 model=model,
                 dataloader=val_loader,
-                metric_names=metric_names,
+                metrics_dict=metrics_dict,
                 criterion=criterion,
                 validation_mode='train'
             )
@@ -580,7 +596,7 @@ class Pipeline(AbstractPipeline):
             self,
             model: nn.Module,
             dataloader: DataLoader,
-            metric_names: list,
+            metrics_dict: dict,
             validation_mode: str,
             criterion=None,
             tta_list: list = None,
@@ -592,7 +608,7 @@ class Pipeline(AbstractPipeline):
 
         :param model:           Input model to validate
         :param dataloader:      Validation dataloader
-        :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param metrics_dict:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
         :param validation_mode: Validation mode:
                                     - 'train' - validate every batch, without threcholds calculation
                                     - 'test' - validate all data, include thresholds calculation
@@ -616,10 +632,9 @@ class Pipeline(AbstractPipeline):
                 criterion=criterion,
                 dataloader=dataloader,
                 allocate_on=self.allocate_on,
-                val_metric_class=self.val_metric_class,
                 task=self.task,
                 mode=self.mode,
-                metric_names=metric_names,
+                metrics_dict=metrics_dict,
                 verbose=verbose
             )
         else:  # validation_mode == 'test':
@@ -657,10 +672,9 @@ class Pipeline(AbstractPipeline):
 
             out_metrics = validate_test(
                 predictions=predictions,
-                val_metric_class=self.val_metric_class,
                 task=self.task,
                 mode=self.mode,
-                metric_names=metric_names,
+                metrics_dict=metrics_dict,
                 verbose=verbose,
                 **val_kwargs
             )

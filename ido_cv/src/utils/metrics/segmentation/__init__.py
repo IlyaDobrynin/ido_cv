@@ -1,85 +1,51 @@
-# -*- coding: utf-8 -*-
-"""
-    Module implements functions for calculating metrics to compare
-    true labels and predicted labels using numpy
-"""
 
-import numpy as np
 import torch
-from ..metric_utils import numpy_metric
+import numpy as np
+from ..abstract_metric import AbstractMetric
 from ..metric_utils import numpy_metric_per_image
 from ..metric_utils import torch_metric
-from ..metric_utils import torch_metric_per_image
 from ..metric_utils import calculate_confusion_matrix_from_arrays
 from ..metric_utils import get_metric_from_matrix
+#
+# from ido_cv.ido_cv.src.utils.metrics.abstract_metric import AbstractMetric
+# from ido_cv.ido_cv.src.utils.metrics.metric_utils import numpy_metric_per_image
+# from ido_cv.ido_cv.src.utils.metrics.metric_utils import torch_metric
+# from ido_cv.ido_cv.src.utils.metrics.metric_utils import calculate_confusion_matrix_from_arrays
+# from ido_cv.ido_cv.src.utils.metrics.metric_utils import get_metric_from_matrix
 
 
-class SegmentationMetrics:
+class BaseSegmentationMetric(AbstractMetric):
 
-    def __init__(self, mode: str, activation: str, device: str):
+    def __init__(
+            self,
+            mode: str,
+            activation: str,
+            device: str,
+            threshold: float,
+            per_class: bool = True,
+            ignore_class: int = None
+    ):
         # Assertions
         assert mode in ['binary', 'multi'], f'Wrong mode parameter: {mode}. ' \
             f'Should be binary of multi.'
-        assert activation in ['sigmoid', 'softmax'], f'Wrong activation parameter: {activation}.'\
+        assert activation in ['sigmoid', 'softmax'], f'Wrong activation parameter: {activation}.' \
             f'Should be softmax or sigmoid.'
-        assert device in ['cpu', 'gpu'], f'Wrong device parameter: {device}.'\
+        assert device in ['cpu', 'gpu'], f'Wrong device parameter: {device}.' \
             f'Should be cpu or gpu.'
 
-        self.activation = activation
         self.mode = mode
+        self.activation = activation
         self.device = device
-
-    def get_metric(self, trues: torch.Tensor, preds: torch.Tensor, metric_name: str,
-                   threshold: float, per_class: bool = True, ignore_class: int = None):
-        """ Function return metric for given set of true and predicted masks
-
-        :param trues:
-                Array of true masks with shape [N, C, H, W] where:
-                    N - number of images in minibatch
-                    C - number of channels
-                    H - height
-                    W - width
-        :param preds:
-                Array of predicted masks with shape [N, C, H, W] where:
-                    N - number of images in minibatch
-                    C - number of channels
-                    H - height
-                    W - width
-        :param metric_name:
-                Name of the metric.
-        :param threshold:
-                Threshold for binarization of predicted mask.
-        :param per_class:
-                Optional flag for multiclass segmentation. If true, the per class
-                            metric will be calculated.
-        :param ignore_class:
-                Optional flag for multiclass segmentation. Show the class that will not be included
-                to the metric estimation.
-        :return:
-        """
-        if self.mode == 'binary':
-            metric = self._get_metric_binary(
-                trues=trues, preds=preds, metric_name=metric_name, threshold=threshold
-            )
-        else:  # self.mode == 'multi':
-            if per_class:
-                metric = self._get_metric_multi_per_class(
-                    trues=trues, preds=preds, metric_name=metric_name,
-                    threshold=threshold, ignore_class=ignore_class
-                )
-            else:
-                metric = self._get_metric_multi_confusion(
-                    trues=trues, preds=preds, metric_name=metric_name, ignore_class=ignore_class
-                )
-
-        return metric
+        self.threshold = threshold
+        self.per_class = per_class
+        self.ignore_class = ignore_class
 
     def _get_metric_binary(
             self,
-            trues:          torch.Tensor,
-            preds:          torch.Tensor,
-            metric_name:    str,
-            threshold:      float
+            trues: torch.Tensor,
+            preds: torch.Tensor,
+            metric_name: str,
+            threshold: float
     ) -> float:
         """ Metric for binary segmentation
 
@@ -93,8 +59,39 @@ class SegmentationMetrics:
             )
         trues_ = torch.squeeze(trues, dim=1)
         preds_ = torch.squeeze(torch.sigmoid(preds), dim=1)
-        metric = self._get_metric_value(trues=trues_, preds=preds_, metric_name=metric_name,
-                                        threshold=threshold, device=self.device)
+        metric = self._get_metric_value(
+            trues=trues_,
+            preds=preds_,
+            metric_name=metric_name,
+            threshold=threshold,
+            device=self.device
+        )
+        return metric
+
+    def _get_metric_multi(
+            self,
+            trues: torch.Tensor,
+            preds: torch.Tensor,
+            threshold: float,
+            metric_name: str,
+            per_class: bool,
+            ignore_class: int
+    ):
+        if per_class:
+            metric = self._get_metric_multi_per_class(
+                trues=trues,
+                preds=preds,
+                metric_name=metric_name,
+                threshold=threshold,
+                ignore_class=ignore_class
+            )
+        else:
+            metric = self._get_metric_multi_confusion(
+                trues=trues,
+                preds=preds,
+                metric_name=metric_name,
+                ignore_class=ignore_class
+            )
         return metric
 
     def _get_metric_multi_per_class(

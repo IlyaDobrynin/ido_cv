@@ -3,18 +3,29 @@
     Facade for all models classes
 
 """
-from . import classification_metrics
-from . import segmentation_metrics
-from . import detection_metrics
-from . import ocr_metrics
+from .abstract_metric import AbstractMetric
+from .segmentation.dice import DiceMetric
+from .segmentation.jaccard import JaccardMetric
+from .segmentation.m_iou import MIouMetric
+from .ocr.accuracy import Accuracy as OCRAccuracy
+from .classification.accuracy import Accuracy as ClassifyAccuracy
 
 
-# ToDo: implement detection metrics
-metrics_tasks = {
-    'classification': classification_metrics.ClassificationMetrics,
-    'segmentation': segmentation_metrics.SegmentationMetrics,
-    'detection': None,
-    'ocr': ocr_metrics.OCRMetrics
+metrics = {
+    'classification': {
+        'accuracy': ClassifyAccuracy
+    },
+    'segmentation': {
+        'dice': DiceMetric,
+        'jaccard': JaccardMetric,
+        'm_iou': MIouMetric
+    },
+    'detection': {
+        # ToDo: implement detection metrics
+    },
+    'ocr': {
+        'accuracy': OCRAccuracy
+    }
 }
 
 
@@ -30,24 +41,35 @@ class MetricFacade:
             loss_name:      Name of the architecture for the given task. See in documentation.
 
     """
-    def __init__(self, task: str):
+    def __init__(
+            self,
+            task: str
+    ):
 
-        if task not in metrics_tasks:
+        if task not in metrics.keys():
             raise ValueError(
                 f"Wrong task parameter: {task}. "
-                f"Should be: {[t for t in metrics_tasks]}"
+                f"Should be: {[t for t in metrics.keys()]}"
             )
+        self.task = task
 
-        self.__metric_class = metrics_tasks[task]
-
-
-    @property
-    def get_metric(self):
+    def get_metric_class(
+            self,
+            metric_definition: (str, callable)
+    ):
         """ Metod returns model class
 
         :return:
         """
-        metrics_class = self.__metric_class
+        if isinstance(metric_definition, str) and metric_definition in metrics[self.task]:
+            metrics_class = metrics[self.task][metric_definition]
+        elif isinstance(metric_definition, AbstractMetric):
+            metrics_class = metric_definition
+        else:
+            raise ValueError(
+                f"Wrong metric_definition parameter: {metric_definition}. "
+                f"Should be string or an instance of ido_cv.src.utils.metrics.AbstractMetric."
+            )
         return metrics_class
 
 

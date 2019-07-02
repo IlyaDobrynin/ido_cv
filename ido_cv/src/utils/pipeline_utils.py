@@ -1,10 +1,8 @@
 import os
 import gc
-import cv2
 import numpy as np
 from tqdm import tqdm
 import torch
-import torchvision
 from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
@@ -13,10 +11,8 @@ import warnings
 from . import model_utils
 from .. import allowed_parameters
 from .ocr_utils import LabelConverter
-from .common_utils import rle_encode
-from .common_utils import rle_decode
 from .image_utils import draw_images
-from .metric_utils import get_opt_threshold
+from ido_cv.ido_cv.src.utils.metrics.metric_utils import get_opt_threshold
 
 warnings.simplefilter("ignore")
 
@@ -118,8 +114,7 @@ def train_one_epoch(
 
 def validate_train(
         criterion,
-        val_metric_class,
-        metric_names: list,
+        metrics_dict: dict,
         model: nn.Module,
         dataloader: DataLoader,
         allocate_on: str,
@@ -130,8 +125,7 @@ def validate_train(
     """ Function to make validation during training (per batch)
 
     :param criterion:           Loss function to optimize
-    :param val_metric_class:    Metric getter
-    :param metric_names:        Names of metrics to validate
+    :param metrics_dict:        Names of metrics to validate
     :param model:               Model to train
     :param dataloader:          Dataloader class
     :param allocate_on:         Param shows where to locate tensors ('cpu' or 'gpu')
@@ -145,7 +139,7 @@ def validate_train(
     :return:
     """
     metric_values = dict()
-    for m_name in metric_names:
+    for m_name in metrics_dict.keys():
         metric_values[m_name] = list()
     losses = list()
     with torch.no_grad():
@@ -158,32 +152,32 @@ def validate_train(
             loss = criterion(outputs, targets)
             losses.append(loss.item())
             # Get parameters for metrics calculation function
-            if task == 'segmentation':
-                get_metric_parameters = dict(
-                    trues=targets, preds=outputs, threshold=0.5
-                )
-                if mode == 'multi':
-                    get_metric_parameters['per_class'] = True
-                    get_metric_parameters['ignore_class'] = None
-            elif task == 'detection':
-                # TODO implement detection metric
-                raise NotImplementedError
-            else:  # self.task in ['classification', 'ocr']
-                get_metric_parameters = dict(
-                    trues=targets, preds=outputs
-                )
+            # if task == 'segmentation':
+            #     get_metric_parameters = dict(
+            #         trues=targets, preds=outputs
+            #     )
+            #     # if mode == 'multi':
+            #     #     get_metric_parameters['per_class'] = True
+            #     #     get_metric_parameters['ignore_class'] = None
+            # elif task == 'detection':
+            #     # TODO implement detection metric
+            #     raise NotImplementedError
+            # else:  # self.task in ['classification', 'ocr']
+            #     get_metric_parameters = dict(
+            #         trues=targets, preds=outputs
+            #     )
             # Calculate metrics for the batch of images
-            for m_name in metric_names:
+            for m_name in metrics_dict.keys():
                 metric_values[m_name] += [
-                    val_metric_class.get_metric(
-                        metric_name=m_name, **get_metric_parameters
+                    metrics_dict[m_name].calculate_metric(
+                        trues=targets, preds=outputs
                     )
                 ]
     # Calculate mean metrics for all images
     out_metrics = dict()
     if criterion is not None:
         out_metrics['loss'] = np.mean(losses).astype(np.float64)
-        for m_name in metric_names:
+        for m_name in metrics_dict.keys():
             out_metrics[m_name] = np.mean(metric_values[m_name]).astype(np.float64)
         # Show information if needed
         if verbose == 1:
@@ -196,8 +190,7 @@ def validate_train(
 
 
 def validate_test(
-        val_metric_class,
-        metric_names:   list,
+        metrics_dict:   dict,
         predictions:    dict,
         task:           str,
         mode:           str,
@@ -229,16 +222,16 @@ def validate_test(
         )
 
     elif task == 'segmentation':
-        if metric_names is None:
+        if metrics_dict is None:
             raise ValueError(
-                f"Wrong metric_names parameter: {metric_names}."
+                f"Wrong metrics_dict parameter: {metrics_dict}."
             )
         masks_t = predictions['labels_true']
         masks_p = predictions['labels_pred']
 
         # Get metrics for binary segmentation
         if mode == 'binary':
-            for m_name in metric_names:
+            for m_name in metrics_dict.keys():
                 threshold, metric_value = get_opt_threshold(
                     masks_t, masks_p, metric_name=m_name
                 )
@@ -261,7 +254,7 @@ def validate_test(
                 class_masks_t = np.all(masks_t == class_color, axis=-1).astype(np.uint8)
                 class_masks_p = masks_p[..., i + 1]
                 out_metrics[class_name] = dict()
-                for m_name in metric_names:
+                for m_name in metrics_dict.keys():
                     threshold, metric_value = get_opt_threshold(
                         class_masks_t, class_masks_p, metric_name=m_name
                     )
@@ -278,28 +271,28 @@ def validate_test(
                         for m_k, m_v in v.items():
                             print(f'- best {m_k}: {m_v:.5f}')
     # Get metrics for ocr task
-    elif task == 'ocr':
+    else:  # task in ['ocr', 'classification']:
         names = predictions['names']
         labels_t = predictions['labels_true']
         labels_p = predictions['labels_pred']
-        for m_name in metric_names:
-            out_metrics[m_name] = val_metric_class.get_metric_value(
+        for m_name in metrics_dict.keys():
+            out_metrics[m_name] = metrics_dict[m_name].get_metric_value(
                 labels_t, labels_p, m_name
             )
-        print(out_metrics)
-        for name, image, label_t_, label_p_ in zip(names, images, labels_t, labels_p):
-            # print(label_t_, label_p_)
-            if label_t_ != label_p_:
-                print(f'True: {label_t_}\nPred: {label_p_}')
-                draw_images([image])
+        # print(out_metrics)
+        # for name, image, label_t_, label_p_ in zip(names, images, labels_t, labels_p):
+        #     # print(label_t_, label_p_)
+        #     if label_t_ != label_p_:
+        #         print(f'True: {label_t_}\nPred: {label_p_}')
+        #         draw_images([image])
 
-    else:  # self.task == 'classification'
-        labels_t = predictions['labels_true']
-        labels_p = predictions['labels_pred']
-        for m_name in metric_names:
-            out_metrics[m_name] = val_metric_class.get_metric_value(
-                labels_t, labels_p, m_name
-            )
+    # else:  # self.task == 'classification'
+    #     labels_t = predictions['labels_true']
+    #     labels_p = predictions['labels_pred']
+    #     for m_name in metrics_dict.keys():
+    #         out_metrics[m_name] = val_metric_class.get_metric_value(
+    #             labels_t, labels_p, m_name
+    #         )
 
     return out_metrics
 

@@ -102,26 +102,35 @@ METRIC_PARAMETERS = {
     'segmentation': {
         'binary': dict(
             activation='sigmoid',
-            device='cpu'
-            # device='gpu'
-        ),
+            device='cpu',
+            # device='gpu',
+            threshold=0.5
+),
         'multi': dict(
             activation='softmax',
-            device='cpu'
+            device='cpu',
+            threshold=0.5,
+            per_class=True,
+            ignore_class=None
         )
     },
     'detection': {
         'all': None
     },
     'classification': {
-        'binary': dict(activation='sigmoid'),
-        'multi': dict(activation='softmax')
+        'binary': dict(
+            activation='sigmoid'),
+        'multi': dict(
+            activation='softmax'
+        )
     },
     'ocr': {
-        'all': dict(ignore_case=False,
-                    alphabet=r'°1234567890абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦ'
-                             r'ЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@"#№%$'
-                             r'%^&*();:-_=+\|/?<>~`., ')
+        'all': dict(
+            ignore_case=False,
+            alphabet=r'°1234567890абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦ'
+                     r'ЧШЩЪЫЬЭЮЯabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@"#№%$'
+                     r'%^&*();:-_=+\|/?<>~`., '
+        )
     }
 }
 
