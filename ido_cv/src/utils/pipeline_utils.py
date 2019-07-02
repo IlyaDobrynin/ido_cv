@@ -12,7 +12,7 @@ from . import model_utils
 from .. import allowed_parameters
 from .ocr_utils import LabelConverter
 from .image_utils import draw_images
-from ido_cv.ido_cv.src.utils.metrics.metric_utils import get_opt_threshold
+from .metrics.metric_utils import get_opt_threshold
 
 warnings.simplefilter("ignore")
 

@@ -137,8 +137,13 @@ class SegmentationMetrics:
         mul_metrics = [x for x in mul_metrics if str(x) != 'nan']
         return np.mean(mul_metrics)
 
-    def _get_metric_multi_confusion(self, trues: torch.Tensor, preds: torch.Tensor,
-                                    metric_name: str, ignore_class: int) -> np.ndarray:
+    def _get_metric_multi_confusion(
+            self,
+            trues: torch.Tensor,
+            preds: torch.Tensor,
+            metric_name: str,
+            ignore_class: int
+    ) -> np.ndarray:
         """ Function to make multiclass metric (jaccard, dice, mean IoU)
 
         :param metric_name:

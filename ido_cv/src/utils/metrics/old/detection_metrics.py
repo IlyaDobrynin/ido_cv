@@ -6,7 +6,7 @@ Module implements metrics for detection:
 """
 from copy import deepcopy
 import numpy as np
-from ...utils import common_utils
+from ido_cv.ido_cv.src.utils import common_utils
 
 
 def mean_ap(true_df, pred_df, iou_thresholds):

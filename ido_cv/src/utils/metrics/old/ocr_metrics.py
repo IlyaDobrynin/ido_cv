@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from ..ocr_utils import LabelConverter
+from ido_cv.ido_cv.src.utils.ocr_utils import LabelConverter
 
 
 class OCRMetrics:

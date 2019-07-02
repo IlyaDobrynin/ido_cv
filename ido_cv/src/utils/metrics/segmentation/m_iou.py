@@ -72,3 +72,6 @@ class MIouMetric(BaseSegmentationMetric):
             )
 
         return metric
+
+    def __str__(self):
+        return 'm_iou'

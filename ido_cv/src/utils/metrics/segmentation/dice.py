@@ -72,3 +72,6 @@ class DiceMetric(BaseSegmentationMetric):
             )
 
         return metric
+
+    def __str__(self):
+        return 'dice'

@@ -50,7 +50,7 @@ class Accuracy(BaseOCRMetric):
             start_idx = final_idx
             trues_.append(true)
 
-        if metric_name == 'accuracy':
+        if self.metric_name == 'accuracy':
             metric = self.get_metric_value(
                 trues=trues_,
                 preds=preds_,
@@ -58,7 +58,10 @@ class Accuracy(BaseOCRMetric):
             )
         else:
             raise ValueError(
-                f"Wrong parameter metric_name: {metric_name}. "
+                f"Wrong parameter metric_name: {self.metric_name}. "
                 f"Should be 'accuracy'."
             )
         return metric
+
+    def __str__(self):
+        return 'accuracy'

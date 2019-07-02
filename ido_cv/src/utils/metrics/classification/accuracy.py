@@ -45,4 +45,5 @@ class Accuracy(BaseClassificationMetric):
 
         return metric
 
-
+    def __str__(self):
+        return 'accuracy'

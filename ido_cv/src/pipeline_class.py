@@ -475,15 +475,15 @@ class Pipeline(AbstractPipeline):
         metric_facade = MetricFacade(task=self.task)
         metrics_dict = {}
         for metric_name in metric_names:
-            metric_parameters = self.parameter_builder.get_metric_parameters()
+            metric_parameters = self.parameter_builder.get_metric_parameters
             if isinstance(metric_name, str):
                 metrics_dict[metric_name] = metric_facade.get_metric_class(
                     metric_definition=metric_name
-                )(**metric_parameters)
+                )(mode=self.mode, **metric_parameters)
             elif isinstance(metric_name, AbstractMetric):
                 metrics_dict[str(metric_name)] = metric_facade.get_metric_class(
                     metric_definition=metric_name
-                )(**metric_parameters)
+                )
 
         # Get criterion
         loss_facade = LossFacade(
@@ -516,7 +516,7 @@ class Pipeline(AbstractPipeline):
 
         # Make dir for weights save
         save_weights_path = os.path.join(save_dir, 'weights')
-        os.makedirs(path=save_weights_path, exist_ok=True)
+        os.makedirs(save_weights_path, exist_ok=True)
 
         best_model_wts = copy.deepcopy(model.state_dict())
         
