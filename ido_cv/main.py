@@ -112,8 +112,8 @@ def main_pipe(args):
         **common_dataloader_parameters
     )
     test_loader = pipe_class.get_dataloaders(
-        path_to_dataset=path_to_test,
-        # path_to_dataset=path_to_holdout,
+        # path_to_dataset=path_to_test,
+        path_to_dataset=path_to_holdout,
         batch_size=args['batch_size'],
         is_train=False,
         # is_train=True,
