@@ -3,45 +3,27 @@
     Facade for losses
 
 """
-from . import classification_losses
-from . import segmentation_losses
-from . import detection_losses
-from . import ocr_losses
+from typing import Union
+from .segmentation.binary.bce_jaccard import BCEJaccard
+from .segmentation.binary.bce_dice import BCEDice
+from .segmentation.binary.bce_lovasz import BCELovasz
+from .segmentation.binary.focal import BinaryRobustFocalLoss2d
 
-losses_dict = {
-    'segmentation': {
-        'binary': {
-            "bce_jaccard": segmentation_losses.BinaryBceMetric,
-            "bce_dice": segmentation_losses.BinaryBceMetric,
-            "bce_lovasz": segmentation_losses.BinaryBceMetric
-        },
-        'multi': {
-            "bce_jaccard": segmentation_losses.MultiBceMetric,
-            "bce_dice": segmentation_losses.MultiBceMetric,
-            "lovasz": segmentation_losses.MultiLovasz
-        }
-    },
-    'detection': {
-        'all': {
-            'focal_loss': detection_losses.FocalLoss
-        }
+from .segmentation.multi.bce_jaccard import MultiBCEJaccard
+from .segmentation.multi.bce_dice import MultiBCEDice
+from .segmentation.multi.lovasz import MultiLovasz
+from .segmentation.multi.focal import MultiRobustFocalLoss2d
 
-    },
-    'classification': {
-        'binary': {
-            'bce': classification_losses.BCELoss
-        },
-        'multi': {
-            'nll': classification_losses.NllLoss,
-            'ce': classification_losses.CELoss
-        }
-    },
-    'ocr': {
-        'all': {
-            'ctc': ocr_losses.CTCLoss
-        }
-    }
-}
+from .detection.focal import FocalLoss
+
+from .classification.bce import BCELoss
+from .classification.ce import CELoss
+from .classification.nll import NllLoss
+
+from .ocr.ctc import CTCLoss
+
+
+from torch.nn import Module
 
 
 class LossFacade:
@@ -56,41 +38,84 @@ class LossFacade:
             loss_name:      Name of the architecture for the given task. See in documentation.
 
     """
-    def __init__(self, task: str, mode: str, loss_name: str):
 
-        tasks = losses_dict.keys()
+    _losses_dict = {
+        'segmentation': {
+            'binary': {
+                'bce_jaccard': BCEJaccard,
+                'bce_dice': BCEDice,
+                'bce_lovasz': BCELovasz,
+                'focal': BinaryRobustFocalLoss2d
+            },
+            'multi': {
+                'bce_jaccard': MultiBCEJaccard,
+                'bce_dice': MultiBCEDice,
+                'lovasz': MultiLovasz,
+                'focal': MultiRobustFocalLoss2d
+            }
+        },
+        'detection': {
+            'all': {
+                'focal_loss': FocalLoss
+            }
+
+        },
+        'classification': {
+            'binary': {
+                'bce': BCELoss
+            },
+            'multi': {
+                'nll': NllLoss,
+                'ce': CELoss
+            }
+        },
+        'ocr': {
+            'all': {
+                'ctc': CTCLoss
+            }
+        }
+    }
+
+    def __init__(
+            self,
+            task: str,
+            mode: str
+    ):
+
+        tasks = self._losses_dict.keys()
         if task not in tasks:
             raise ValueError(
                 f"Wrong task parameter: {task}. "
                 f"Should be: {[t for t in tasks]}"
             )
+        self.task = task
 
-        modes = losses_dict[task].keys()
+        modes = self._losses_dict[task].keys()
         if mode not in modes:
             raise ValueError(
                 f"Wrong task parameter: {mode}. "
                 f"For {task} should be: {[m for m in modes]}"
             )
+        self.mode = mode
 
-        loss_names = losses_dict[task][mode].keys()
-        if loss_name not in loss_names:
-            raise ValueError(
-                f"Wrong task parameter: {loss_name}. "
-                f"For {mode} {task} should be: {[ln for ln in loss_names]}"
-            )
-
-        self.__loss_class = losses_dict[task][mode][loss_name]
-
-
-    @property
-    def get_loss(self):
+    def get_loss_class(
+            self,
+            loss_definition: Union[str, Module]
+    ):
         """ Metod returns model class
 
         :return:
         """
-        loss_class = self.__loss_class
+
+        if isinstance(loss_definition, str) and loss_definition \
+                in self._losses_dict[self.task][self.mode].keys():
+            loss_class = self._losses_dict[self.task][self.mode][loss_definition]
+        elif isinstance(loss_definition, Module):
+            loss_class = loss_definition
+        else:
+            raise ValueError(
+                f"Wrong metric_definition parameter: {loss_definition}. "
+                f"Should be string or an instance of torch.nn.Module."
+            )
+
         return loss_class
-
-
-if __name__ == '__main__':
-    facade_class = LossFacade(task='segmentation', mode='multi', loss_name='bce_jaccard')

@@ -1,14 +1,17 @@
-from __future__ import print_function
-
+# from __future__ import print_function
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from ..common_utils import one_hot_embedding
 from torch.autograd import Variable
+
+from ..loss_utils import one_hot_embedding
 
 
 class FocalLoss(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(
+            self,
+            num_classes=10
+    ):
         super(FocalLoss, self).__init__()
         self.num_classes = num_classes
 
@@ -79,7 +82,11 @@ class FocalLoss(nn.Module):
 
         return balanced_focal_loss
 
-    def forward(self, preds, targets):
+    def make_loss(
+            self,
+            preds: torch.Tensor,
+            targets: torch.Tensor
+    ):
         '''Compute loss between (loc_preds, loc_targets) and (cls_preds, cls_targets).
 
         Args:
