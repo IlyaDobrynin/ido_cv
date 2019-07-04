@@ -489,12 +489,14 @@ class Pipeline(AbstractPipeline):
         loss_facade = LossFacade(
             task=self.task,
             mode=self.mode,
-            loss_name=loss_name
         )
         loss_parameters = self.parameter_builder.get_loss_parameters(
             loss_name=loss_name
         )
-        criterion = loss_facade.get_loss(**loss_parameters)
+        criterion = loss_facade.get_loss_class(
+            loss_definition=loss_name
+        )(**loss_parameters)
+
         # Get learning rate scheduler policy
         # ToDo: make callbacks facade
         if scheduler == 'rop':

@@ -18,7 +18,7 @@ def rle_encode(image: np.ndarray, mode: str = 'absolute') -> list:
 
     :param img:     numpy array, 1 - mask, 0 - background
     :param mode:    Mode:
-                        - absolute -    every line of pixels on image starts with
+                        - 'absolute' -  every line of pixels on image starts with
                                         it absolute pixel, e. g. '3 5 13 6' means that
                                         pixels 3,4,5,6,7 and 13,14,15,16,17,18 have mask
                         - 'relative' -  first line of pixels starts with its position,
@@ -327,23 +327,6 @@ def softmax(x):
     x_shift = x - xmax.view(-1,1)
     x_exp = x_shift.exp()
     return x_exp / x_exp.sum(1).view(-1,1)
-
-
-def one_hot_embedding(labels, num_classes):
-    '''Embedding labels to one-hot form.
-
-    Args:
-      labels: (LongTensor) class labels, sized [N,].
-      num_classes: (int) number of classes.
-
-    Returns:
-      (tensor) encoded labels, sized [N,#classes].
-    '''
-    y = torch.eye(num_classes)  # [D,D]
-    
-    # print('ohe.labels  ', labels, labels.shape)
-    # print('ohe.y[labels]  ', y[labels], y[labels].shape)
-    return y[labels]            # [N,D]
 
 
 def msr_init(net):

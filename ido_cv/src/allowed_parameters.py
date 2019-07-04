@@ -24,43 +24,52 @@ LOSS_PARAMETERS = {
     'segmentation': {
         'binary': {
             "bce_jaccard": dict(
-                metric='jaccard',
                 weight_type=None,
                 alpha=0.4
             ),
             "bce_dice": dict(
-                metric='dice',
                 weight_type=None,
                 alpha=0.4
             ),
             "bce_lovasz": dict(
-                metric='lovasz',
                 weight_type=None,
                 alpha=0.4,
                 per_image=True
+            ),
+            'focal': dict(
+                ignore=None,
+                reduced=False,
+                gamma=2.0,
+                alpha=0.25,
+                threshold=0.5,
+                reduction="mean",
             )
         },
         'multi': {
             "bce_jaccard": dict(
-                num_classes=22,
-                metric='jaccard',
+
                 alpha=0.3,
                 # class_weights=[0.1, 0.4, 0.5, 0.5, 0.2, 0.2, 0.1, 0.1, 0.2, 0.4, 0.1]
             ),
             "bce_dice": dict(
-                num_classes=22,
-                metric='dice',
                 alpha=0.3,
                 # class_weights=[0.1, 0.8, 0.8, 0.8, 0.2, 0.2, 0.1, 0.1, 0.2, 0.2, 0.1]
             ),
             "lovasz": dict(
-                ignore=0
+                ignore_class=0
+            ),
+            'focal': dict(
+                gamma=2,
+                size_average=True,
+                class_weight=None
             )
         }
     },
     'detection': {
         'all': {
-            'focal_loss': dict()
+            'focal_loss': dict(
+                num_classes=10
+            )
         }
 
     },
@@ -103,9 +112,8 @@ METRIC_PARAMETERS = {
         'binary': dict(
             activation='sigmoid',
             device='cpu',
-            # device='gpu',
             threshold=0.5
-),
+        ),
         'multi': dict(
             activation='softmax',
             device='cpu',
