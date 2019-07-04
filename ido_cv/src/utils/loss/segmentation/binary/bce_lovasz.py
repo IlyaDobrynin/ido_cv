@@ -8,7 +8,7 @@ class BCELovasz(BceMetricBase):
             self,
             weight_type: int = None,
             alpha: float = 0.3,
-            per_image: bool = None,
+            per_image: bool = False,
             ignore_class: int = None
     ):
         super(BCELovasz, self).__init__(

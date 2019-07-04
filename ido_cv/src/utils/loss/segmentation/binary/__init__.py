@@ -54,7 +54,7 @@ class BceMetricBase(nn.Module):
                 metric_coef = dice_coef(metric_target, metric_output, weight=weights)
             elif metric_name == 'lovasz':
                 metric_coef = lovasz_hinge(
-                    metric_output, metric_target, self.per_image, self.ignore
+                    metric_output, metric_target, self.per_image, self.ignore_class
                 )
             else:
                 raise NotImplementedError(
@@ -62,7 +62,7 @@ class BceMetricBase(nn.Module):
                     f"Should be 'jaccard', 'dice', 'lovasz' or None."
                 )
             if metric_name == 'lovasz':
-                loss = self.alpha * bce_loss - (1 - self.alpha) * metric_coef
+                loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
             else:
                 loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
                 # loss = self.alpha * bce_loss + (1 - self.alpha) * (1 - metric_coef)

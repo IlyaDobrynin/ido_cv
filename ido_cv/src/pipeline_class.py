@@ -471,19 +471,7 @@ class Pipeline(AbstractPipeline):
             **optimizer_parameters
         )
 
-        # Get metrics
-        metric_facade = MetricFacade(task=self.task)
-        metrics_dict = {}
-        for metric_name in metric_names:
-            metric_parameters = self.parameter_builder.get_metric_parameters
-            if isinstance(metric_name, str):
-                metrics_dict[metric_name] = metric_facade.get_metric_class(
-                    metric_definition=metric_name
-                )(mode=self.mode, **metric_parameters)
-            elif isinstance(metric_name, AbstractMetric):
-                metrics_dict[str(metric_name)] = metric_facade.get_metric_class(
-                    metric_definition=metric_name
-                )
+
 
         # Get criterion
         loss_facade = LossFacade(
@@ -540,7 +528,8 @@ class Pipeline(AbstractPipeline):
             val_metrics = self.validation(
                 model=model,
                 dataloader=val_loader,
-                metrics_dict=metrics_dict,
+                # metrics_dict=metrics_dict,
+                metric_names=metric_names,
                 criterion=criterion,
                 validation_mode='train'
             )
@@ -598,7 +587,8 @@ class Pipeline(AbstractPipeline):
             self,
             model: nn.Module,
             dataloader: DataLoader,
-            metrics_dict: dict,
+            # metrics_dict: dict,
+            metric_names: list,
             validation_mode: str,
             criterion=None,
             tta_list: list = None,
@@ -623,6 +613,20 @@ class Pipeline(AbstractPipeline):
         """
         assert validation_mode in ['train', 'test'], f"Wrong mode parameter: {validation_mode}." \
             f" Should be 'train' or 'test'"
+
+        # Get metrics
+        metric_facade = MetricFacade(task=self.task)
+        metrics_dict = {}
+        for metric_name in metric_names:
+            metric_parameters = self.parameter_builder.get_metric_parameters
+            if isinstance(metric_name, str):
+                metrics_dict[metric_name] = metric_facade.get_metric_class(
+                    metric_definition=metric_name
+                )(mode=self.mode, **metric_parameters)
+            elif isinstance(metric_name, AbstractMetric):
+                metrics_dict[str(metric_name)] = metric_facade.get_metric_class(
+                    metric_definition=metric_name
+                )
 
         if validation_mode == 'train':
             if criterion is None:
