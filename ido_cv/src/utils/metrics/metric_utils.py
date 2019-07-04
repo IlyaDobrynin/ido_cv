@@ -134,8 +134,7 @@ def torch_metric(
 def numpy_metric_per_image(
         trues: np.ndarray,
         preds: np.ndarray,
-        metric_name: str,
-        # include_empty: bool = True
+        metric_name: str
 ) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 
@@ -155,11 +154,8 @@ def numpy_metric_per_image(
             metrics.append(0)
             continue
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) == 0:
-            # if include_empty:
             metrics.append(1)
             continue
-            # else:
-            #     continue
 
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)
