@@ -47,7 +47,6 @@ LOSS_PARAMETERS = {
         },
         'multi': {
             "bce_jaccard": dict(
-
                 alpha=0.3,
                 # class_weights=[0.1, 0.4, 0.5, 0.5, 0.2, 0.2, 0.1, 0.1, 0.2, 0.4, 0.1]
             ),
@@ -127,7 +126,8 @@ METRIC_PARAMETERS = {
     },
     'classification': {
         'binary': dict(
-            activation='sigmoid'),
+            activation='sigmoid'
+        ),
         'multi': dict(
             activation='softmax'
         )

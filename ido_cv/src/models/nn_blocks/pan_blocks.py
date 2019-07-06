@@ -15,7 +15,7 @@ class GAUBlockUnet(nn.Module):
         if self.upscale_mode == 'bilinear':
             self.align_corners = True
         else:
-            self.align_corners = False
+            self.align_corners = None
 
         conv_bn_relu_params = dict(
             out_channels=out_ch,
@@ -93,8 +93,8 @@ class FPABlock(nn.Module):
         # global pooling branch
         self.branch1 = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
-            Conv(in_channels, out_channels, kernel_size=1,
-                 stride=1, padding=0, conv_type=conv_type)
+            ConvBnRelu(in_channels, out_channels, kernel_size=1,
+                       stride=1, padding=0, conv_type=conv_type)
         )
         # midddle branch
         self.mid = nn.Sequential(

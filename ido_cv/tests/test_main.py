@@ -14,7 +14,7 @@ TTA = allowed_parameters.TTA
 
 
 def test_parameters(parameters):
-    for m_name in parameters['valid_metrics']:
+    for m_name in parameters['validation_metrics']:
         assert m_name in METRIC_NAMES[parameters['task']][parameters['mode']], \
             f"Wrong metric: {m_name}. " \
             f"Should be one of {METRIC_NAMES[parameters['task']][parameters['mode']]}"
@@ -33,8 +33,8 @@ def test_parameters(parameters):
         f"Wrong loss name: {parameters['loss_name']}." \
         f" Should be one of {LOSS_NAMES[parameters['task']][parameters['mode']].keys()}"
     
-    assert parameters['optimizer'] in OPTIMIZERS.keys(),\
-        f"Wrong optimizer: {parameters['optimizer']}." \
+    assert parameters['optim_name'] in OPTIMIZERS.keys(),\
+        f"Wrong optimizer: {parameters['optim_name']}." \
         f"Should be one of {OPTIMIZERS.keys()}"
     
     assert parameters['checkpoint_metric'] in CHP_METRICS[parameters['task']][parameters['mode']], \

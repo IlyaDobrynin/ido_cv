@@ -270,8 +270,12 @@ def draw_image_boxes(image, boxes, labels, scores):
     plt.show()
 
 
-def convert_multilabel_mask(mask: np.ndarray, label_colors: dict, how: str = 'rgb2class',
-                            ignore_class: int = None) -> np.ndarray:
+def convert_multilabel_mask(
+        mask: np.ndarray,
+        label_colors: dict,
+        how: str = 'rgb2class',
+        ignore_class: int = None
+) -> np.ndarray:
     """ Function for multilabel mask convertation
 
     :param mask: Numpy ndarray of mask

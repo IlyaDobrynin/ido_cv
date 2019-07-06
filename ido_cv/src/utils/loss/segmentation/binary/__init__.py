@@ -1,9 +1,9 @@
 import torch
 from torch import nn
-from ido_cv.src.utils.loss.loss_utils import get_weight
-from ido_cv.src.utils.loss.loss_utils import jaccard_coef
-from ido_cv.src.utils.loss.loss_utils import dice_coef
-from ido_cv.src.utils.loss.loss_utils import lovasz_hinge
+from ...loss_utils import get_weight
+from ...loss_utils import jaccard_coef
+from ...loss_utils import dice_coef
+from ...loss_utils import lovasz_hinge
 
 
 class BceMetricBase(nn.Module):

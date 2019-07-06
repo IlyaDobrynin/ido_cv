@@ -1,6 +1,6 @@
 from torch import nn
 from torch.nn import functional as F
-from ido_cv.src.utils.loss.loss_utils import lovasz_softmax
+from ...loss_utils import lovasz_softmax
 
 
 class MultiLovasz(nn.Module):

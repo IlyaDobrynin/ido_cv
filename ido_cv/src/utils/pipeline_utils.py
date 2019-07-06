@@ -1,5 +1,6 @@
 import os
 import gc
+from typing import List, Tuple, Dict
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -20,7 +21,7 @@ TTA = allowed_parameters.TTA
 
 
 # def find_learning_rate
-def get_data(task: str, data: tuple, allocate_on: str):
+def get_data(task: str, data: Tuple, allocate_on: str) -> Tuple:
     """ Function returns tensors for train/val processes
 
     :param task:        Process task:
@@ -66,7 +67,7 @@ def train_one_epoch(
         epoch: int,
         step: int,
         task: str,
-):
+) -> int:
     """ Function for training one epoch
 
     :param model:       Model to train
@@ -121,7 +122,7 @@ def validate_train(
         task: str,
         mode: str,
         verbose: int
-) -> dict:
+) -> Dict:
     """ Function to make validation during training (per batch)
 
     :param criterion:           Loss function to optimize
@@ -151,21 +152,6 @@ def validate_train(
             # Perform validation while training
             loss = criterion(outputs, targets)
             losses.append(loss.item())
-            # Get parameters for metrics calculation function
-            # if task == 'segmentation':
-            #     get_metric_parameters = dict(
-            #         trues=targets, preds=outputs
-            #     )
-            #     # if mode == 'multi':
-            #     #     get_metric_parameters['per_class'] = True
-            #     #     get_metric_parameters['ignore_class'] = None
-            # elif task == 'detection':
-            #     # TODO implement detection metric
-            #     raise NotImplementedError
-            # else:  # self.task in ['classification', 'ocr']
-            #     get_metric_parameters = dict(
-            #         trues=targets, preds=outputs
-            #     )
             # Calculate metrics for the batch of images
             for m_name in metrics_dict.keys():
                 metric_values[m_name] += [
@@ -190,17 +176,16 @@ def validate_train(
 
 
 def validate_test(
-        metrics_dict:   dict,
-        predictions:    dict,
-        task:           str,
-        mode:           str,
-        verbose:        int,
+        metrics_dict: dict,
+        predictions: list,
+        task: str,
+        mode: str,
+        verbose: int,
         **kwargs
-):
+) -> Dict:
     """ function to validate data after training process
 
-    :param val_metric_class:    Metric getter
-    :param metric_names:        Names of metrics to validate
+    :param metrics_dict:        Names of metrics to validate
     :param predictions:         Predictions dictionary
     :param task:                Process task:
                                     - segmentation
@@ -213,7 +198,6 @@ def validate_test(
     :return:
     """
     out_metrics = dict()
-    images = predictions['images']
     # Get metrics for detection task
     if task == 'detection':
         #ToDo: implement detection
@@ -226,8 +210,8 @@ def validate_test(
             raise ValueError(
                 f"Wrong metrics_dict parameter: {metrics_dict}."
             )
-        masks_t = predictions['labels_true']
-        masks_p = predictions['labels_pred']
+        masks_t = np.asarray([pred[3] for pred in predictions])
+        masks_p = np.asarray([pred[2] for pred in predictions])
 
         # Get metrics for binary segmentation
         if mode == 'binary':
@@ -272,28 +256,12 @@ def validate_test(
                             print(f'- best {m_k}: {m_v:.5f}')
     # Get metrics for ocr task
     else:  # task in ['ocr', 'classification']:
-        names = predictions['names']
-        labels_t = predictions['labels_true']
-        labels_p = predictions['labels_pred']
+        labels_t = [pred[3] for pred in predictions]
+        labels_p = [pred[2] for pred in predictions]
         for m_name in metrics_dict.keys():
             out_metrics[m_name] = metrics_dict[m_name].get_metric_value(
                 labels_t, labels_p, m_name
             )
-        # print(out_metrics)
-        # for name, image, label_t_, label_p_ in zip(names, images, labels_t, labels_p):
-        #     # print(label_t_, label_p_)
-        #     if label_t_ != label_p_:
-        #         print(f'True: {label_t_}\nPred: {label_p_}')
-        #         draw_images([image])
-
-    # else:  # self.task == 'classification'
-    #     labels_t = predictions['labels_true']
-    #     labels_p = predictions['labels_pred']
-    #     for m_name in metrics_dict.keys():
-    #         out_metrics[m_name] = val_metric_class.get_metric_value(
-    #             labels_t, labels_p, m_name
-    #         )
-
     return out_metrics
 
 
@@ -301,7 +269,7 @@ def _get_true_labels(
         data_batch: tuple,
         task: str,
         mode: str
-) -> list:
+) -> List:
     """ Function returns true labels from given batch
 
     :param data_batch:  Minibatch of data (images and labels)
@@ -346,7 +314,7 @@ def _get_true_labels(
     return true_labels
 
 
-def _get_predicted_dict(
+def _get_predicts(
         task: str,
         with_labels: bool,
         names_list: list,
@@ -354,7 +322,7 @@ def _get_predicted_dict(
         labels_pred_batch_list: list,
         labels_true_batch_list: list = None,
         **kwargs
-):
+) -> List:
     """
 
     :param task:                    Process task:
@@ -371,20 +339,19 @@ def _get_predicted_dict(
     :param kwargs:
     :return:
     """
-    predictions = dict()
-    predictions['names'] = names_list
-    predictions['images'] = images_list
+    predictions = list()
 
     if task == 'detection':
         # ToDo: implement detection
         raise NotImplementedError(
             f"Validation for detection is not implemented"
         )
+
     elif task == 'segmentation':
         labels_pred_list = np.concatenate(labels_pred_batch_list, axis=0)
         if with_labels:
             labels_true_list = np.concatenate(labels_true_batch_list, axis=0)
-            predictions['labels_true'] = labels_true_list
+
     elif task == 'ocr':
         labels_pred_list_ = []
         for labels_p_batch in labels_pred_batch_list:
@@ -406,7 +373,6 @@ def _get_predicted_dict(
             for labels_t_batch in labels_true_batch_list:
                 for i in range(len(labels_t_batch)):
                     labels_true_list_.append(labels_t_batch[i])
-
             labels_true_list = []
             for i, label_t in enumerate(labels_true_list_):
                 label_t_ = ''
@@ -415,28 +381,30 @@ def _get_predicted_dict(
                         if char == v:
                             label_t_ += k
                 labels_true_list.append(label_t_)
-            predictions['labels_true'] = labels_true_list
 
     else:  # task == 'classification'
-        labels_pred_list = np.concatenate(labels_true_batch_list, axis=0)
+        labels_pred_list = np.concatenate(labels_pred_batch_list, axis=0)
         if with_labels:
-            labels_true_list = np.concatenate(labels_pred_batch_list, axis=0)
-            predictions['labels_true'] = labels_true_list
+            labels_true_list = np.concatenate(labels_true_batch_list, axis=0)
 
-    predictions['labels_pred'] = labels_pred_list
-
+    for idx, name in enumerate(names_list):
+        if with_labels:
+            predictions.append([name, images_list[idx], labels_pred_list[idx], labels_true_list[idx]])
+        else:
+            predictions.append([name, images_list[idx], labels_pred_list[idx]])
     return predictions
 
 
 def predict(
-    model:          nn.Module,
-    dataloader:     DataLoader,
-    with_labels:    bool,
-    allocate_on:    str,
-    task:           str,
-    mode:           str,
-    save_batch:     bool = False,
-    save_dir:       str = None,
+    model: nn.Module,
+    dataloader: DataLoader,
+    with_labels: bool,
+    allocate_on: str,
+    task: str,
+    mode: str,
+    save_batch: bool = False,
+    save_dir: str = None,
+    disable_tqdm: bool = False,
     **kwargs
 ):
     """ Function for inference process
@@ -454,6 +422,7 @@ def predict(
     :param mode:        Process mode
     :param save_batch:  Flag to save predictions after every batch
     :param save_dir:    Path to save predictions
+    :param disable_tqdm:
     :param kwargs:
     :return:
     """
@@ -465,7 +434,7 @@ def predict(
 
     model.eval()
     with torch.no_grad():
-        for data_batch in tqdm(dataloader):
+        for data_batch in tqdm(dataloader, disable=disable_tqdm):
             names = data_batch[-1]
             images = np.moveaxis(data_batch[0].data.numpy(), 1, -1)
             if not save_batch:
@@ -536,7 +505,9 @@ def predict(
                     ignore_case=False
                 )
                 pred_labels = converter.best_path_decode(log_preds, strings=False)
-                if type(pred_labels[0]) == int:
+                if len(pred_labels) == 0:
+                    pred_labels.append([])                
+                if isinstance(pred_labels[0], int):
                     pred_labels = [pred_labels]
                 if save_batch:
                     pred_labels_str = []
@@ -582,8 +553,9 @@ def predict(
 
     if not save_batch:
         images_list = np.concatenate(images_batch_list, axis=0)
-        predictions = _get_predicted_dict(
+        predictions = _get_predicts(
             task=task,
+            mode=mode,
             with_labels=with_labels,
             names_list=names_list,
             images_list=images_list,
@@ -593,5 +565,3 @@ def predict(
         )
 
         return predictions
-
-

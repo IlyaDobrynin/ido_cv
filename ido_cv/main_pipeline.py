@@ -61,7 +61,9 @@ class MainPipeline:
             tta_list=parameters['tta_list'],
             save_preds=parameters['save_preds'],
             save_inference_path=parameters['save_inference_path'],
-            inference_with_labels=parameters['inference_with_labels']
+            inference_with_labels=parameters['inference_with_labels'],
+            show_preds=parameters['show_preds'],
+            segmentation_threshold=parameters['segmentation_threshold']
         )
 
         if 'label_colors' in parameters:
@@ -118,12 +120,12 @@ class MainPipeline:
         self._hyperparameters_dict['first_step'] = initial_parameters['step']
         self._hyperparameters_dict['best_measure'] = 0
 
-        self.paths = dict(
-            train_path=self._hyperparameters_dict['train_path'],
-            valid_path=self._hyperparameters_dict['valid_path'],
-            holdout_path=self._hyperparameters_dict['holdout_path'],
-            test_path=self._hyperparameters_dict['test_path']
-        )
+        # self.paths = dict(
+        #     train_path=self._hyperparameters_dict['train_path'],
+        #     valid_path=self._hyperparameters_dict['valid_path'],
+        #     holdout_path=self._hyperparameters_dict['holdout_path'],
+        #     test_path=self._hyperparameters_dict['test_path']
+        # )
         self.dataloaders_dict = self._get_dataloaders()
 
     def _get_model_data(
@@ -156,13 +158,10 @@ class MainPipeline:
         if self._hyperparameters_dict['dataloaders_schema'] is None:
             self._hyperparameters_dict['dataloaders_schema'] = default_dataloaders_schema
 
-        print(
-            f"Paths: \n"
-            f"Find_lr: {self.paths[default_dataloaders_schema['find_lr_dataloader'][0]]}\n"
-            f"Train: {self.paths[default_dataloaders_schema['train_dataloader'][0]]}\n"
-            f"Validation: {self.paths[default_dataloaders_schema['valid_dataloader'][0]]}\n"
-            f"Test: {self.paths[default_dataloaders_schema['test_dataloader'][0]]}"
-        )
+        print(f"Paths:")
+        for k, v in default_dataloaders_schema.items():
+            print(f"{k[:-11]}: {self._hyperparameters_dict[v[0]]}")
+
         dataloaders_dict = dict()
         for loader_type, parameters in self._hyperparameters_dict['dataloaders_schema'].items():
             if loader_type == 'find_lr_dataloader':
@@ -171,7 +170,7 @@ class MainPipeline:
                 batch_size = self._hyperparameters_dict['batch_size']
 
             dataloader = self.pipeline_object.get_dataloaders(
-                path_to_dataset=self.paths[parameters[0]],
+                path_to_dataset=self._hyperparameters_dict[parameters[0]],
                 workers=self._hyperparameters_dict['workers'],
                 batch_size=batch_size,
                 is_train=parameters[1],

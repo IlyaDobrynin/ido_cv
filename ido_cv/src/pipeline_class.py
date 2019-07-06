@@ -5,6 +5,7 @@ Module implements base class for classification pipeline
 """
 import os
 import gc
+from typing import Tuple, Dict, List
 import copy
 import warnings
 from pathlib import Path
@@ -90,11 +91,11 @@ class Pipeline(AbstractPipeline):
 
     def __init__(
             self,
-            task:           str,
-            mode:           str,
-            allocate_on:    str = 'cpu',
-            time:           str = None,
-            random_seed:    int = 1,
+            task: str,
+            mode: str,
+            allocate_on: str = 'cpu',
+            time: str = None,
+            random_seed: int = 1,
             **kwargs
     ):
 
@@ -144,15 +145,16 @@ class Pipeline(AbstractPipeline):
 
     def get_dataloaders(
             self,
-            dataset_class:      Dataset = None,
-            path_to_dataset:    str = None,
-            data_file:          pd.DataFrame = None,
-            batch_size:         int = 1,
-            is_train:           bool = True,
-            workers:            int = 1,
-            shuffle:            bool = False,
-            common_augs              = None,
-            train_time_augs          = None
+            dataset_class: Dataset = None,
+            path_to_dataset: str = None,
+            data_file: pd.DataFrame = None,
+            batch_size: int = 1,
+            is_train: bool = True,
+            show_samples: bool = False,
+            workers: int = 1,
+            shuffle: bool = False,
+            common_augs=None,
+            train_time_augs=None
     ) -> DataLoader:
         """ Function to make train data loaders
 
@@ -161,6 +163,7 @@ class Pipeline(AbstractPipeline):
         :param data_file:       Data file
         :param batch_size:      Size of data minibatch
         :param is_train:        Flag to specify dataloader type (train or test)
+        :param show_samples:    Flag to show dataloader samples
         :param workers:         Number of multithread workers
         :param shuffle:         Flag for random shuffling train dataloader samples
         :param common_augs:     Augmentations common for all images
@@ -193,7 +196,8 @@ class Pipeline(AbstractPipeline):
                     data_file=data_file,
                     train=is_train,
                     common_augs=common_augs,
-                    train_time_augs=train_time_augs
+                    train_time_augs=train_time_augs,
+                    show_sample=show_samples
                 )
 
             if self.task == 'segmentation' and self.mode == 'multi':
@@ -215,23 +219,25 @@ class Pipeline(AbstractPipeline):
 
     def get_model(
             self,
-            model_name:         str = None,
-            path_to_weights:    str = None,
-            save_path:          str = None,
-            device_ids:         list = None,
-            cudnn_bench:        bool = False,
-            model_parameters:   dict = None,
-            verbose:            int = 1,
-            show_model:         bool = False
-    ) -> tuple:
+            model_name: str = None,
+            device_ids: List[int] = None,
+            path_to_weights: str = None,
+            model_parameters: Dict = None,
+            cudnn_bench: bool = False,
+            out_path: str = None,
+            same_out_path: bool = False,
+            verbose: int = 1,
+            show_model: bool = False
+    ) -> Tuple:
         """ Function returns model, allocated to the given gpu's
 
         :param model_name: Class of the model
-        :param path_to_weights: Path to the trained weights
-        :param save_path: Path to the trained weights
         :param device_ids: List of the gpu's
+        :param path_to_weights: Path to the trained weights
+        :param model_parameters: Model parameters
         :param cudnn_bench: Flag to include cudnn benchmark
-        :param model_parameters: Path to the trained weights
+        :param out_path:
+        :param same_out_path: Flag to check out path: same as in the pretrained weights or new
         :param verbose: Flag to show info
         :param show_model: Flag to show model
         :return:
@@ -244,19 +250,25 @@ class Pipeline(AbstractPipeline):
             best_measure=0
         )
 
+        model_save_path = os.path.join(
+            out_path, f"models/{self.task}/{self.mode}/{model_name}/{self.time}"
+        )
+        save_model_class_flag = True
         # Get model parameters
         if path_to_weights is None:
             if model_parameters is None:
                 model_parameters = self.parameter_builder.get_model_parameters(model_name)
-                print(
-                    f'Pretrained weights are not provided. '
-                    f'Train process runs with defauld {model_name} parameters: \n{model_parameters}'
-                )
-
+                if verbose == 1:
+                    print(
+                        f'Pretrained weights are not provided. '
+                        f'Train process runs with defauld {model_name} parameters: \n'
+                        f'{model_parameters}'
+                    )
             # Get model class
             model_facade = ModelFacade(task=self.task, model_name=model_name)
             model = model_facade.get_model(**model_parameters)
-        else:
+
+        else:  # path_to_weights is not None
             if not os.path.exists(path_to_weights):
                 raise ValueError(f'Wrong path to weights: {path_to_weights}')
 
@@ -269,7 +281,7 @@ class Pipeline(AbstractPipeline):
                 raise ValueError(
                     f"Path {cfg_path} does not exists."
                 )
-            cfg_parser = ConfigParser(cfg_type='model', cfg_path=cfg_path)
+            cfg_parser = ConfigParser(cfg_path=cfg_path)
             model_parameters = cfg_parser.parameters['model_parameters']
             model_name = cfg_parser.parameters['model_name']
 
@@ -288,17 +300,24 @@ class Pipeline(AbstractPipeline):
                 # print(model_class_path)
                 model = torch.load(model_class_path)
                 model_dict = torch.load(str(path_to_weights))
-                model_weights = {key.replace('module.', ''): value
-                                 for key, value in model_dict['model_weights'].items()
-                                 if 'module' in key}
+                model_weights = {
+                    key.replace('module.', ''): value for key, value in
+                    model_dict['model_weights'].items() if 'module' in key
+                }
 
             model.load_state_dict(model_weights)
             initial_parameters['epoch'] = model_dict['epoch']
             initial_parameters['step'] = model_dict['step']
             initial_parameters['best_measure'] = model_dict['best_measure']
 
-        if save_path is not None:
-            torch.save(model, os.path.join(save_path, 'model_class'))
+            if same_out_path:
+                model_save_path = path_to_model
+                save_model_class_flag = False
+
+        os.makedirs(model_save_path, exist_ok=True)
+
+        if save_model_class_flag:
+            torch.save(model, os.path.join(model_save_path, 'model_class'))
         else:
             msg = "Model class will not save"
             warnings.warn(msg, Warning)
@@ -319,7 +338,7 @@ class Pipeline(AbstractPipeline):
                     device=summary_device
                 )
 
-        return model, initial_parameters, model_parameters
+        return model, model_save_path, initial_parameters, model_parameters
 
     def find_lr(
             self,
@@ -470,9 +489,6 @@ class Pipeline(AbstractPipeline):
             lr=lr,
             **optimizer_parameters
         )
-
-
-
         # Get criterion
         loss_facade = LossFacade(
             task=self.task,
@@ -528,7 +544,6 @@ class Pipeline(AbstractPipeline):
             val_metrics = self.validation(
                 model=model,
                 dataloader=val_loader,
-                # metrics_dict=metrics_dict,
                 metric_names=metric_names,
                 criterion=criterion,
                 validation_mode='train'
@@ -587,7 +602,6 @@ class Pipeline(AbstractPipeline):
             self,
             model: nn.Module,
             dataloader: DataLoader,
-            # metrics_dict: dict,
             metric_names: list,
             validation_mode: str,
             criterion=None,
@@ -694,7 +708,7 @@ class Pipeline(AbstractPipeline):
             save_batch: bool = False,
             with_labels: bool = False,
             save_dir:   str = ''
-    ) -> dict:
+    ) -> List:
         """ Function to make predictions
 
         :param model:       Input model
@@ -732,7 +746,7 @@ class Pipeline(AbstractPipeline):
 
     def visualize_preds(
             self,
-            preds: dict,
+            preds: List,
             threshold: float = 0.1,
             with_labels: bool = False
     ):
@@ -750,12 +764,12 @@ class Pipeline(AbstractPipeline):
             )
 
         elif self.task == 'segmentation':
-            names = preds['names']
-            images = preds['images']
-            masks = preds['labels_pred']
+            names = [pred[0] for pred in preds]
+            images = np.asarray([pred[1] for pred in preds])
+            masks = np.asarray([pred[2] for pred in preds])
 
             if with_labels:
-                masks_true = preds['labels_true']
+                masks_true = np.asarray([pred[3] for pred in preds])
 
             # Get visualization for binary segmentation task
             if self.mode == 'binary':
