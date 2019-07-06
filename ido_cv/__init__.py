@@ -7,6 +7,6 @@ from .src.pipeline.validation import validation
 from .src.pipeline.predict import prediction
 from .src.pipeline_class import Pipeline
 from .src import allowed_parameters
-from .main import main_pipe
+from .main_pipeline import MainPipeline
 
 name = 'ido_cv'
