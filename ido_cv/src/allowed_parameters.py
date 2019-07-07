@@ -4,7 +4,7 @@ import torch.optim as optimizers
 
 TASKS_MODES = {
     'segmentation': {
-        'binary':   ['unet', 'fpn', 'deeplabv3'],
+        'binary':   ['unet', 'fpn', 'deeplabv3', "unet_plus_plus"],
         'multi':    ['unet', 'fpn', 'deeplabv3']
     },
     'detection': {
@@ -194,7 +194,24 @@ MODEL_PARAMETERS = {
                     'conv_type': 'default',
                     'residual': True,
                     'se_decoder': True
+            },
+            "unet_plus_plus": {
+                'backbone': 'resnet34',
+                'depth': 4,
+                'num_classes': 1,
+                'num_filters': 32,
+                'pretrained': 'imagenet',
+                'unfreeze_encoder': True,
+                'custom_enc_start': False,
+                'num_input_channels': 3,
+                'dropout_rate': 0.2,
+                'bn_type': 'default',
+                'conv_type': 'default',
+                'upscale_mode': 'nearest',
+                'depthwise': False,
+                'residual': True,
             }
+
         },
         'multi': {
             'unet': {

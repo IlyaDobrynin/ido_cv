@@ -4,6 +4,7 @@
 
 """
 from . import unet_factory
+from . import unet_plus_plus_factory
 from . import deeplabv3
 from . import fpn_factory
 from . import classification_factory
@@ -16,6 +17,7 @@ models_dict = {
     },
     'segmentation': {
         'unet': unet_factory.UnetFactory,
+        'unet_plus_plus': unet_plus_plus_factory.UnetPlusPlusFactory,
         'fpn': fpn_factory.FPNFactory,
         'deeplabv3': deeplabv3.DeepLabV3
     },
