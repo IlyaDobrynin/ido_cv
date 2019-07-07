@@ -489,17 +489,23 @@ class Pipeline(AbstractPipeline):
             lr=lr,
             **optimizer_parameters
         )
+
         # Get criterion
         loss_facade = LossFacade(
             task=self.task,
             mode=self.mode,
         )
-        loss_parameters = self.parameter_builder.get_loss_parameters(
-            loss_name=loss_name
-        )
-        criterion = loss_facade.get_loss_class(
-            loss_definition=loss_name
-        )(**loss_parameters)
+
+        if isinstance(loss_name, str):
+            loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+            criterion = loss_facade.get_loss_class(loss_definition=loss_name)(**loss_parameters)
+        elif isinstance(loss_name, nn.Module):
+            criterion = loss_facade.get_loss_class(loss_definition=loss_name)
+        else:
+            raise ValueError(
+                f"Wrong loss_name: {loss_name}."
+            )
+
 
         # Get learning rate scheduler policy
         # ToDo: make callbacks facade
@@ -614,7 +620,7 @@ class Pipeline(AbstractPipeline):
 
         :param model:           Input model to validate
         :param dataloader:      Validation dataloader
-        :param metrics_dict:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
+        :param metric_names:    Metrics to print (available are 'dice', 'jaccard', 'm_iou')
         :param validation_mode: Validation mode:
                                     - 'train' - validate every batch, without threcholds calculation
                                     - 'test' - validate all data, include thresholds calculation
@@ -640,6 +646,10 @@ class Pipeline(AbstractPipeline):
             elif isinstance(metric_name, AbstractMetric):
                 metrics_dict[str(metric_name)] = metric_facade.get_metric_class(
                     metric_definition=metric_name
+                )
+            else:
+                raise ValueError(
+                    f"Wrong metric_name: {metric_name}."
                 )
 
         if validation_mode == 'train':
@@ -702,12 +712,12 @@ class Pipeline(AbstractPipeline):
 
     def prediction(
             self,
-            model:      nn.Module,
+            model: nn.Module,
             dataloader: DataLoader,
-            tta_list:   list = None,
+            tta_list: list = None,
             save_batch: bool = False,
             with_labels: bool = False,
-            save_dir:   str = ''
+            save_dir: str = ''
     ) -> List:
         """ Function to make predictions
 

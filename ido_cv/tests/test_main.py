@@ -3,6 +3,7 @@
 Module make tests for main.py
 
 """
+from torch.nn import Module
 from ..src import allowed_parameters
 
 TASKS_MODES = allowed_parameters.TASKS_MODES
@@ -29,9 +30,10 @@ def test_parameters(parameters):
         f"Wrong model_name: {parameters['model_name']}. " \
         f"Should be one of {TASKS_MODES[parameters['task']][parameters['mode']]}"
     
-    assert parameters['loss_name'] in LOSS_NAMES[parameters['task']][parameters['mode']].keys(),\
-        f"Wrong loss name: {parameters['loss_name']}." \
-        f" Should be one of {LOSS_NAMES[parameters['task']][parameters['mode']].keys()}"
+    assert (parameters['loss_name'] in LOSS_NAMES[parameters['task']][parameters['mode']].keys()) \
+           or isinstance(parameters['loss_name'], Module), \
+        f"Wrong loss name: {parameters['loss_name']}. " \
+            f"Should be one of {LOSS_NAMES[parameters['task']][parameters['mode']].keys()}"
     
     assert parameters['optim_name'] in OPTIMIZERS.keys(),\
         f"Wrong optimizer: {parameters['optim_name']}." \

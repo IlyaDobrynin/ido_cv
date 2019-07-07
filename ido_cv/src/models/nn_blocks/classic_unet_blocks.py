@@ -21,25 +21,27 @@ class DecoderBlock(nn.Module):
         self.upscale_mode = upscale_mode
 
         if in_skip_ch is not None:
-            in_channels = in_skip_ch + in_dec_ch
+            self.in_channels = in_skip_ch + in_dec_ch
         else:
-            in_channels = in_dec_ch
+            self.in_channels = in_dec_ch
+
+        self.out_channels = out_channels
 
         # Initialize layers
         conv_params = dict(
-            out_channels=out_channels,
+            out_channels=self.out_channels,
             kernel_size=3,
             padding=1,
             depthwise=depthwise,
             conv_type=conv_type
         )
-        self.conv_bn_relu = ConvBnRelu(in_channels=in_channels, bn_type=bn_type, **conv_params)
-        self.conv = Conv(in_channels=out_channels, **conv_params)
-        self.bn = BatchNorm(out_channels, bn_type=bn_type)
+        self.conv_bn_relu = ConvBnRelu(in_channels=self.in_channels, bn_type=bn_type, **conv_params)
+        self.conv = Conv(in_channels=self.out_channels, **conv_params)
+        self.bn = BatchNorm(self.out_channels, bn_type=bn_type)
         self.relu = nn.ReLU(inplace=True)
         self.dropout = nn.Dropout2d(p=dropout_rate)
         if self.se_include:
-            self.se_block = SCSEBlock(out_channels, reduction=se_reduction)
+            self.se_block = SCSEBlock(self.out_channels, reduction=se_reduction)
 
     def forward(self, x, skip=None):
 
@@ -154,20 +156,21 @@ class DecoderBlockResidual(nn.Module):
         self.upscale_mode = upscale_mode
 
         if in_skip_ch is not None:
-            in_channels = in_skip_ch + in_dec_ch
+            self.in_channels = in_skip_ch + in_dec_ch
         else:
-            in_channels = in_dec_ch
+            self.in_channels = in_dec_ch
 
+        self.out_channels = out_channels
         self.conv = Conv(
-            in_channels=in_channels,
-            out_channels=out_channels,
+            in_channels=self.in_channels,
+            out_channels=self.out_channels,
             kernel_size=1,
             conv_type=conv_type,
             depthwise=depthwise,
         )
         residual_parameters = dict(
-            in_channels=out_channels,
-            out_channels=out_channels,
+            in_channels=self.out_channels,
+            out_channels=self.out_channels,
             depthwise=depthwise,
             add_se=se_include,
             bn_type=bn_type,

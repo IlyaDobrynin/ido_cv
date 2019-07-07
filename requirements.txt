@@ -1,4 +1,4 @@
-opencv_python==3.4.3.18
+opencv_python==4.1.0.25
 torchvision==0.2.1
 numpy==1.15.4
 pandas==0.23.4
