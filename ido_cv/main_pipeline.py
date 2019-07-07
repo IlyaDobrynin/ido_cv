@@ -33,6 +33,7 @@ class MainPipeline:
             cudnn_benchmark=parameters['cudnn_benchmark'],
             model_parameters=parameters['model_parameters'],
             show_model_info=parameters['show_model_info'],
+            model_verbose=parameters['model_verbose'],
 
             # Dataloader parameters
             workers=parameters['workers'],
@@ -110,7 +111,7 @@ class MainPipeline:
         else:
             same_out_path = True
 
-        model_data = self._get_model_data(same_out_path=same_out_path, verbose=1)
+        model_data = self._get_model_data(same_out_path=same_out_path)
         self.model = model_data[0]
         self.model_save_path = model_data[1]
         self._hyperparameters_dict['model_parameters'] = model_data[3]
@@ -128,11 +129,7 @@ class MainPipeline:
         # )
         self.dataloaders_dict = self._get_dataloaders()
 
-    def _get_model_data(
-            self,
-            same_out_path,
-            verbose: int = 1
-    ) -> Tuple:
+    def _get_model_data(self, same_out_path) -> Tuple:
         model_data = self.pipeline_object.get_model(
             model_name=self._hyperparameters_dict['model_name'],
             device_ids=self._hyperparameters_dict['device_ids'],
@@ -142,7 +139,7 @@ class MainPipeline:
             out_path=self._hyperparameters_dict['output_path'],
             same_out_path=same_out_path,
             show_model=self._hyperparameters_dict['show_model_info'],
-            verbose=verbose
+            verbose=self._hyperparameters_dict['model_verbose']
         )
         return model_data
 
