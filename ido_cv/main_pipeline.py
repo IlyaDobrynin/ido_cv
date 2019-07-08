@@ -161,10 +161,10 @@ class MainPipeline:
 
         dataloaders_dict = dict()
         for loader_type, parameters in self._hyperparameters_dict['dataloaders_schema'].items():
-            if loader_type == 'find_lr_dataloader':
-                batch_size = 5
-            else:
-                batch_size = self._hyperparameters_dict['batch_size']
+            # if loader_type == 'find_lr_dataloader':
+            #     batch_size = 5
+            # else:
+            batch_size = self._hyperparameters_dict['batch_size']
 
             dataloader = self.pipeline_object.get_dataloaders(
                 path_to_dataset=self._hyperparameters_dict[parameters[0]],
@@ -185,12 +185,16 @@ class MainPipeline:
         :return: Optimal learning rate
         """
         # Get model
-        find_lr_model, _, _ = self.pipeline_object.get_model(
+        find_lr_model, _, _, _ = self.pipeline_object.get_model(
             model_name=self._hyperparameters_dict['model_name'],
             device_ids=self._hyperparameters_dict['device_ids'],
-            cudnn_bench=self._hyperparameters_dict['cudnn_benchmark'],
             path_to_weights=self._hyperparameters_dict['path_to_weights'],
-            model_parameters=self._hyperparameters_dict['model_parameters']
+            model_parameters=self._hyperparameters_dict['model_parameters'],
+            cudnn_bench=self._hyperparameters_dict['cudnn_benchmark'],
+            out_path=self._hyperparameters_dict['output_path'],
+            same_out_path=False,
+            show_model=self._hyperparameters_dict['show_model_info'],
+            verbose=self._hyperparameters_dict['model_verbose']
         )
 
         find_lr_loader = self.dataloaders_dict['find_lr_dataloader']

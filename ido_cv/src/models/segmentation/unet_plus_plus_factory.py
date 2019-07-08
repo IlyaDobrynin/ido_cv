@@ -130,11 +130,19 @@ class UnetPlusPlusFactory(EncoderCommon):
                             raise ValueError("Wrong output type of income edge {}. it can be 'skip_connection' "
                                              "or 'upscale' only".format(params["output_type"]))
                 if self.residual:
-                    node_instance = DecoderBlockResidual(in_skip_ch=in_skip_ch, in_dec_ch=in_dec_ch, out_channels=out_channels,
-                                                 *decoder_parameters)
+                    node_instance = DecoderBlockResidual(
+                        in_skip_ch=in_skip_ch,
+                        in_dec_ch=in_dec_ch,
+                        out_channels=out_channels,
+                        **decoder_parameters
+                    )
                 else:
-                    node_instance = DecoderBlock(in_skip_ch=in_skip_ch, in_dec_ch=in_dec_ch, out_channels=out_channels,
-                                                 **decoder_parameters)
+                    node_instance = DecoderBlock(
+                        in_skip_ch=in_skip_ch,
+                        in_dec_ch=in_dec_ch,
+                        out_channels=out_channels,
+                        **decoder_parameters
+                    )
                 nodes_dict[node_name] = {"output_channels_num": out_channels}
                 nodes_instances_dict[node_name] = node_instance
 

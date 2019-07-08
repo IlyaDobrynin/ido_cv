@@ -25,11 +25,11 @@ LOSS_PARAMETERS = {
         'binary': {
             "bce_jaccard": dict(
                 weight_type=None,
-                alpha=0.4
+                alpha=0.2
             ),
             "bce_dice": dict(
                 weight_type=None,
-                alpha=0.4
+                alpha=0.2
             ),
             "bce_lovasz": dict(
                 weight_type=None,
@@ -37,12 +37,9 @@ LOSS_PARAMETERS = {
                 per_image=True
             ),
             'focal': dict(
-                ignore=None,
-                reduced=False,
-                gamma=2.0,
-                alpha=0.25,
-                threshold=0.5,
-                reduction="mean",
+                gamma=0.5,
+                weight=None,
+                size_average=True
             )
         },
         'multi': {
@@ -142,158 +139,158 @@ METRIC_PARAMETERS = {
     }
 }
 
-MODEL_PARAMETERS = {
-    'segmentation': {
-        'binary': {
-            'unet': {
-                'backbone': 'resnet34',
-                'depth': 4,
-                'num_classes': 1,
-                'num_filters': 32,
-                'pretrained': 'imagenet',
-                'unfreeze_encoder': True,
-                'custom_enc_start': False,
-                'num_input_channels': 3,
-                'dropout_rate': 0.2,
-                'bn_type': 'default',
-                'conv_type': 'default',
-                'upscale_mode': 'nearest',
-                'depthwise': False,
-                'residual': True,
-                'mid_block': None,
-                'dilate_depth': 1,
-                'gau': False,
-                'hypercolumn': True,
-                'se_decoder': True
-            },
-            'fpn': {
-                'backbone': 'resnet34',
-                'depth': 4,
-                'num_classes': 1,
-                'num_filters': 32,
-                'pretrained': 'imagenet',
-                'unfreeze_encoder': True,
-                'custom_enc_start': False,
-                'num_input_channels': 3,
-                'dropout_rate': 0.2,
-                'upscale_mode': 'nearest',
-                'depthwise': False,
-                'bn_type': 'default',
-                'conv_type': 'default',
-                'residual': True,
-                'gau': False,
-                'se_decoder': True
-            },
-            'deeplabv3': {
-                    'backbone': 'dilated_resnet34',
-                    'num_classes': 1,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'num_input_channels': 3,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'residual': True,
-                    'se_decoder': True
-            },
-            "unet_plus_plus": {
-                'backbone': 'resnet34',
-                'depth': 4,
-                'num_classes': 1,
-                'num_filters': 32,
-                'pretrained': 'imagenet',
-                'unfreeze_encoder': True,
-                'custom_enc_start': False,
-                'num_input_channels': 3,
-                'dropout_rate': 0.2,
-                'bn_type': 'default',
-                'conv_type': 'default',
-                'upscale_mode': 'nearest',
-                'depthwise': False,
-                'residual': True,
-            }
-
-        },
-        'multi': {
-            'unet': {
-                    'backbone': 'resnet34',
-                    'depth': 4,
-                    'num_classes': 11,
-                    'num_filters': 32,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'custom_enc_start': False,
-                    'num_input_channels': 3,
-                    'dropout_rate': 0.2,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'upscale_mode': 'nearest',
-                    'depthwise': False,
-                    'residual': True,
-                    'mid_block': None,
-                    'dilate_depth': 1,
-                    'gau': False,
-                    'hypercolumn': True,
-                    'se_decoder': False
-            },
-            'fpn': {
-                    'backbone': 'resnet34',
-                    'depth': 4,
-                    'num_classes': 11,
-                    'num_filters': 32,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'custom_enc_start': False,
-                    'num_input_channels': 3,
-                    'dropout_rate': 0.2,
-                    'upscale_mode': 'nearest',
-                    'depthwise': False,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'residual': True,
-                    'gau': False,
-                    'se_decoder': True
-            },
-            'deeplabv3': {
-                    'backbone': 'dilated_resnet34',
-                    'num_classes': 11,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True,
-                    'num_input_channels': 3,
-                    'bn_type': 'default',
-                    'conv_type': 'default',
-                    'residual': True,
-                    'se_decoder': True
-            },
-        },
-    },
-    'detection': {
-        'all': {
-            'RetinaNet': {
-                'backbone': 'resnet34',
-                'se_block': False,
-                'residual': True
-            }
-        }
-    },
-    'classification': {
-        'binary': {
-            'basic_model': {
-                    'backbone': 'resnet34',
-                    'num_classes': 1,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True
-            }
-        },
-        'multi': {
-            'basic_model': {
-                    'backbone': 'resnet34',
-                    'num_classes': 5,
-                    'pretrained': 'imagenet',
-                    'unfreeze_encoder': True
-            }
-        }
-    }
-}
+# MODEL_PARAMETERS = {
+#     'segmentation': {
+#         'binary': {
+#             'unet': {
+#                 'backbone': 'resnet34',
+#                 'depth': 4,
+#                 'num_classes': 1,
+#                 'num_filters': 32,
+#                 'pretrained': 'imagenet',
+#                 'unfreeze_encoder': True,
+#                 'custom_enc_start': False,
+#                 'num_input_channels': 3,
+#                 'dropout_rate': 0.2,
+#                 'bn_type': 'default',
+#                 'conv_type': 'default',
+#                 'upscale_mode': 'nearest',
+#                 'depthwise': False,
+#                 'residual': True,
+#                 'mid_block': None,
+#                 'dilate_depth': 1,
+#                 'gau': False,
+#                 'hypercolumn': True,
+#                 'se_decoder': True
+#             },
+#             'fpn': {
+#                 'backbone': 'resnet34',
+#                 'depth': 4,
+#                 'num_classes': 1,
+#                 'num_filters': 32,
+#                 'pretrained': 'imagenet',
+#                 'unfreeze_encoder': True,
+#                 'custom_enc_start': False,
+#                 'num_input_channels': 3,
+#                 'dropout_rate': 0.2,
+#                 'upscale_mode': 'nearest',
+#                 'depthwise': False,
+#                 'bn_type': 'default',
+#                 'conv_type': 'default',
+#                 'residual': True,
+#                 'gau': False,
+#                 'se_decoder': True
+#             },
+#             'deeplabv3': {
+#                     'backbone': 'dilated_resnet34',
+#                     'num_classes': 1,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True,
+#                     'num_input_channels': 3,
+#                     'bn_type': 'default',
+#                     'conv_type': 'default',
+#                     'residual': True,
+#                     'se_decoder': True
+#             },
+#             "unet_plus_plus": {
+#                 'backbone': 'resnet34',
+#                 'depth': 4,
+#                 'num_classes': 1,
+#                 'num_filters': 32,
+#                 'pretrained': 'imagenet',
+#                 'unfreeze_encoder': True,
+#                 'custom_enc_start': False,
+#                 'num_input_channels': 3,
+#                 'dropout_rate': 0.2,
+#                 'bn_type': 'default',
+#                 'conv_type': 'default',
+#                 'upscale_mode': 'nearest',
+#                 'depthwise': False,
+#                 'residual': True,
+#             }
+#
+#         },
+#         'multi': {
+#             'unet': {
+#                     'backbone': 'resnet34',
+#                     'depth': 4,
+#                     'num_classes': 11,
+#                     'num_filters': 32,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True,
+#                     'custom_enc_start': False,
+#                     'num_input_channels': 3,
+#                     'dropout_rate': 0.2,
+#                     'bn_type': 'default',
+#                     'conv_type': 'default',
+#                     'upscale_mode': 'nearest',
+#                     'depthwise': False,
+#                     'residual': True,
+#                     'mid_block': None,
+#                     'dilate_depth': 1,
+#                     'gau': False,
+#                     'hypercolumn': True,
+#                     'se_decoder': False
+#             },
+#             'fpn': {
+#                     'backbone': 'resnet34',
+#                     'depth': 4,
+#                     'num_classes': 11,
+#                     'num_filters': 32,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True,
+#                     'custom_enc_start': False,
+#                     'num_input_channels': 3,
+#                     'dropout_rate': 0.2,
+#                     'upscale_mode': 'nearest',
+#                     'depthwise': False,
+#                     'bn_type': 'default',
+#                     'conv_type': 'default',
+#                     'residual': True,
+#                     'gau': False,
+#                     'se_decoder': True
+#             },
+#             'deeplabv3': {
+#                     'backbone': 'dilated_resnet34',
+#                     'num_classes': 11,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True,
+#                     'num_input_channels': 3,
+#                     'bn_type': 'default',
+#                     'conv_type': 'default',
+#                     'residual': True,
+#                     'se_decoder': True
+#             },
+#         },
+#     },
+#     'detection': {
+#         'all': {
+#             'RetinaNet': {
+#                 'backbone': 'resnet34',
+#                 'se_block': False,
+#                 'residual': True
+#             }
+#         }
+#     },
+#     'classification': {
+#         'binary': {
+#             'basic_model': {
+#                     'backbone': 'resnet34',
+#                     'num_classes': 1,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True
+#             }
+#         },
+#         'multi': {
+#             'basic_model': {
+#                     'backbone': 'resnet34',
+#                     'num_classes': 5,
+#                     'pretrained': 'imagenet',
+#                     'unfreeze_encoder': True
+#             }
+#         }
+#     }
+# }
 
 OPTIMIZERS = {
     'adam': optimizers.Adam,
@@ -360,7 +357,7 @@ class ParameterBuilder:
         self.mode = mode
         self.__loss_params_dict = LOSS_PARAMETERS
         self.__metric_params_dict = METRIC_PARAMETERS
-        self.__model_params_dict = MODEL_PARAMETERS
+        # self.__model_params_dict = MODEL_PARAMETERS
         self.__optim_params_dict = OPTIMIZER_PARAMETERS
 
     @property
@@ -370,8 +367,8 @@ class ParameterBuilder:
     def get_loss_parameters(self, loss_name: str):
         return self.__loss_params_dict[self.task][self.mode][loss_name]
 
-    def get_model_parameters(self, model_name: str):
-        return self.__model_params_dict[self.task][self.mode][model_name]
+    # def get_model_parameters(self, model_name: str):
+    #     return self.__model_params_dict[self.task][self.mode][model_name]
 
     def get_optimizer_parameters(self, optimizer_name: str):
         return self.__optim_params_dict[optimizer_name]

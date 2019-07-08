@@ -62,7 +62,7 @@ class BceMetricBase(nn.Module):
                     f"Should be 'jaccard', 'dice', 'lovasz' or None."
                 )
             if metric_name == 'lovasz':
-                loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
+                loss = metric_coef
             else:
                 loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
                 # loss = self.alpha * bce_loss + (1 - self.alpha) * (1 - metric_coef)

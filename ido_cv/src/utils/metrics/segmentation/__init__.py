@@ -2,7 +2,7 @@
 import torch
 import numpy as np
 from ..abstract_metric import AbstractMetric
-from ..metric_utils import numpy_metric_per_image
+from ..metric_utils import numpy_metric_per_image, numpy_metric
 from ..metric_utils import torch_metric
 from ..metric_utils import calculate_confusion_matrix_from_arrays
 from ..metric_utils import get_metric_from_matrix
@@ -175,12 +175,12 @@ class BaseSegmentationMetric(AbstractMetric):
         if device == 'cpu':
             trues = trues.data.cpu().numpy().astype(np.uint8)
             preds = preds.data.cpu().numpy().astype(np.uint8)
-            # metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
-            metric = numpy_metric_per_image(
-                trues=trues,
-                preds=preds,
-                metric_name=metric_name,
-            )
+            metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            # metric = numpy_metric_per_image(
+            #     trues=trues,
+            #     preds=preds,
+            #     metric_name=metric_name,
+            # )
         elif device == 'gpu':
             metric = torch_metric(
                 trues=trues,

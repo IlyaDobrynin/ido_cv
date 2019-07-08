@@ -12,7 +12,7 @@ import torch
 from torch.nn import functional as F
 
 
-def dice_coef(preds, trues, weight=None) -> float:
+def dice_coef(preds, trues, weight=None) -> torch.Tensor:
     """ Function returns binary dice coefficient
 
     :param preds: Predictions of the network

@@ -257,6 +257,9 @@ class Pipeline(AbstractPipeline):
         # Get model parameters
         if path_to_weights is None:
             if model_parameters is None:
+                # raise ValueError(
+                #
+                # )
                 model_parameters = self.parameter_builder.get_model_parameters(model_name)
                 if verbose == 1:
                     print(
@@ -378,9 +381,19 @@ class Pipeline(AbstractPipeline):
         )
 
         # Get criterion
-        loss_facade = LossFacade(task=self.task, mode=self.mode, loss_name=loss_name)
-        loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
-        criterion = loss_facade.get_loss(**loss_parameters)
+        loss_facade = LossFacade(
+            task=self.task,
+            mode=self.mode,
+        )
+        if isinstance(loss_name, str):
+            loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
+            criterion = loss_facade.get_loss_class(loss_definition=loss_name)(**loss_parameters)
+        elif isinstance(loss_name, nn.Module):
+            criterion = loss_facade.get_loss_class(loss_definition=loss_name)
+        else:
+            raise ValueError(
+                f"Wrong loss_name: {loss_name}."
+            )
 
         # Set initial parameters
         num = len(dataloader) - 1
