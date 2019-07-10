@@ -249,18 +249,19 @@ class Pipeline(AbstractPipeline):
             step=0,
             best_measure=0
         )
-
-        model_save_path = os.path.join(
-            out_path, f"models/{self.task}/{self.mode}/{model_name}/{self.time}"
-        )
         save_model_class_flag = True
         # Get model parameters
         if path_to_weights is None:
+
+            model_save_path = os.path.join(
+                out_path, f"models/{self.task}/{self.mode}/{model_name}/{self.time}"
+            )
+
             if model_parameters is None:
                 # raise ValueError(
                 #
                 # )
-                model_parameters = self.parameter_builder.get_model_parameters(model_name)
+                # model_parameters = self.parameter_builder.get_model_parameters(model_name)
                 if verbose == 1:
                     print(
                         f'Pretrained weights are not provided. '
@@ -277,6 +278,14 @@ class Pipeline(AbstractPipeline):
 
             # Load model class and weights
             path_to_model = Path(path_to_weights).parents[1]
+
+            if same_out_path:
+                model_save_path = path_to_model
+                save_model_class_flag = False
+            else:
+                model_save_path = os.path.join(
+                    out_path, f"models/{self.task}/{self.mode}/{model_name}/{self.time}"
+                )
 
             # Get saved configs
             cfg_path = os.path.join(path_to_model, 'hyperparameters.yml')
@@ -312,10 +321,6 @@ class Pipeline(AbstractPipeline):
             initial_parameters['epoch'] = model_dict['epoch']
             initial_parameters['step'] = model_dict['step']
             initial_parameters['best_measure'] = model_dict['best_measure']
-
-            if same_out_path:
-                model_save_path = path_to_model
-                save_model_class_flag = False
 
         os.makedirs(model_save_path, exist_ok=True)
 
@@ -502,13 +507,11 @@ class Pipeline(AbstractPipeline):
             lr=lr,
             **optimizer_parameters
         )
-
         # Get criterion
         loss_facade = LossFacade(
             task=self.task,
             mode=self.mode,
         )
-
         if isinstance(loss_name, str):
             loss_parameters = self.parameter_builder.get_loss_parameters(loss_name=loss_name)
             criterion = loss_facade.get_loss_class(loss_definition=loss_name)(**loss_parameters)
@@ -518,8 +521,6 @@ class Pipeline(AbstractPipeline):
             raise ValueError(
                 f"Wrong loss_name: {loss_name}."
             )
-
-
         # Get learning rate scheduler policy
         # ToDo: make callbacks facade
         if scheduler == 'rop':

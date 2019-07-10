@@ -21,7 +21,7 @@ class MIouMetric(BaseSegmentationMetric):
             per_class=per_class,
             ignore_class=ignore_class
         )
-        self.metric_name = 'dice'
+        self.metric_name = 'm_iou'
 
     def calculate_metric(
             self,

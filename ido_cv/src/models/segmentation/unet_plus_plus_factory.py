@@ -21,7 +21,8 @@ from torch.nn import functional as F
 
 class UnetPlusPlusFactory(EncoderCommon):
 
-    def __init__(self,
+    def __init__(
+            self,
             backbone: str,
             depth: int = 5,
             num_classes: int = 1,
@@ -35,9 +36,11 @@ class UnetPlusPlusFactory(EncoderCommon):
             conv_type: str = 'default',
             upscale_mode: str = 'nearest',
             depthwise: bool = False,
-            residual: bool = False):
+            residual: bool = False
+    ):
 
-        super(UnetPlusPlusFactory, self).__init__(backbone=backbone,
+        super(UnetPlusPlusFactory, self).__init__(
+            backbone=backbone,
             pretrained=pretrained,
             depth=depth,
             unfreeze_encoder=unfreeze_encoder,
@@ -45,7 +48,8 @@ class UnetPlusPlusFactory(EncoderCommon):
             num_input_channels=num_input_channels,
             bn_type=bn_type,
             conv_type=conv_type,
-            depthwise=depthwise)
+            depthwise=depthwise
+        )
 
         self.num_classes = num_classes
         self.num_filters = num_filters
@@ -59,8 +63,8 @@ class UnetPlusPlusFactory(EncoderCommon):
         self.final_layer = nn.Conv2d(
             in_channels=self.num_filters,
             out_channels=self.num_classes,
-            kernel_size=1)
-
+            kernel_size=1
+        )
 
     def get_encoders_dict(self):
         encoders_dict = {}

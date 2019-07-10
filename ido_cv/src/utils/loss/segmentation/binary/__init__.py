@@ -37,16 +37,15 @@ class BceMetricBase(nn.Module):
                     f"If metric parameter is lovasz, parameter per_image should be set."
                 )
 
+        bce_loss = self.bce_loss(preds, trues)
+
         metric_target = (trues == 1).float()
         metric_output = torch.sigmoid(preds)
-
         # Weight estimation
         if self.weight_type:
             weights = get_weight(trues=trues, weight_type=self.weight_type)
         else:
             weights = None
-
-        bce_loss = self.bce_loss(preds, trues)
         if metric_name:
             if metric_name == 'jaccard':
                 metric_coef = jaccard_coef(metric_target, metric_output, weight=weights)
@@ -62,10 +61,9 @@ class BceMetricBase(nn.Module):
                     f"Should be 'jaccard', 'dice', 'lovasz' or None."
                 )
             if metric_name == 'lovasz':
-                loss = metric_coef
+                loss = self.alpha * bce_loss + (1 - self.alpha) * metric_coef
             else:
                 loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
-                # loss = self.alpha * bce_loss + (1 - self.alpha) * (1 - metric_coef)
         else:
             raise ValueError(
                 f"Wrong metric_name: {metric_name}. "

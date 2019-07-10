@@ -8,11 +8,13 @@ from .segmentation.binary.bce_jaccard import BCEJaccard
 from .segmentation.binary.bce_dice import BCEDice
 from .segmentation.binary.bce_lovasz import BCELovasz
 from .segmentation.binary.focal import FocalLoss2d
+from .segmentation.binary.tversky import FocalBinaryTverskyLoss
 
 from .segmentation.multi.bce_jaccard import MultiBCEJaccard
 from .segmentation.multi.bce_dice import MultiBCEDice
 from .segmentation.multi.lovasz import MultiLovasz
 from .segmentation.multi.focal import MultiRobustFocalLoss2d
+from .segmentation.multi.tversky import MultiTverskyLoss
 
 from .detection.focal import FocalLoss
 
@@ -45,13 +47,15 @@ class LossFacade:
                 'bce_jaccard': BCEJaccard,
                 'bce_dice': BCEDice,
                 'bce_lovasz': BCELovasz,
-                'focal': FocalLoss2d
+                'focal': FocalLoss2d,
+                'tversky': FocalBinaryTverskyLoss,
             },
             'multi': {
                 'bce_jaccard': MultiBCEJaccard,
                 'bce_dice': MultiBCEDice,
                 'lovasz': MultiLovasz,
-                'focal': MultiRobustFocalLoss2d
+                'focal': MultiRobustFocalLoss2d,
+                'tversky': MultiTverskyLoss
             }
         },
         'detection': {

@@ -175,12 +175,12 @@ class BaseSegmentationMetric(AbstractMetric):
         if device == 'cpu':
             trues = trues.data.cpu().numpy().astype(np.uint8)
             preds = preds.data.cpu().numpy().astype(np.uint8)
-            metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
-            # metric = numpy_metric_per_image(
-            #     trues=trues,
-            #     preds=preds,
-            #     metric_name=metric_name,
-            # )
+            # metric = numpy_metric(trues=trues, preds=preds, metric_name=metric_name)
+            metric = numpy_metric_per_image(
+                trues=trues,
+                preds=preds,
+                metric_name=metric_name,
+            )
         elif device == 'gpu':
             metric = torch_metric(
                 trues=trues,

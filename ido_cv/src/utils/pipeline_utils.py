@@ -176,8 +176,8 @@ def validate_train(
 
 
 def validate_test(
-        metrics_dict: dict,
-        predictions: list,
+        metrics_dict: Dict,
+        predictions: List,
         task: str,
         mode: str,
         verbose: int,

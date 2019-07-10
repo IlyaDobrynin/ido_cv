@@ -5,7 +5,7 @@ import torch.optim as optimizers
 TASKS_MODES = {
     'segmentation': {
         'binary':   ['unet', 'fpn', 'deeplabv3', "unet_plus_plus"],
-        'multi':    ['unet', 'fpn', 'deeplabv3']
+        'multi':    ['unet', 'fpn', 'deeplabv3', "unet_plus_plus"]
     },
     'detection': {
         'all':      ['retinanet']
@@ -40,6 +40,12 @@ LOSS_PARAMETERS = {
                 gamma=0.5,
                 weight=None,
                 size_average=True
+            ),
+            'tversky': dict(
+                alpha=0.5,
+                beta=0.5,
+                gamma=1.0,
+                reduction='mean'
             )
         },
         'multi': {
@@ -58,6 +64,12 @@ LOSS_PARAMETERS = {
                 gamma=2,
                 size_average=True,
                 class_weight=None
+            ),
+            'tversky': dict(
+                alpha=0.2,
+                beta=0.8,
+                gamma=2.0,
+                weights=None
             )
         }
     },

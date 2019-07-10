@@ -4,8 +4,7 @@ import yaml
 from typing import Dict, Tuple, Union, List
 from torch.nn import Module
 
-from ido_cv.src.pipeline_class import Pipeline
-
+from .src.pipeline_class import Pipeline
 
 
 class MainPipeline:
