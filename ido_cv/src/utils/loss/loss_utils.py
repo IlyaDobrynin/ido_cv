@@ -7,48 +7,71 @@ try:
     from itertools import ifilterfalse
 except ImportError: # py3k
     from itertools import filterfalse as ifilterfalse
+from typing import Optional
 import numpy as np
 import torch
 from torch.nn import functional as F
 
 
-def dice_coef(preds, trues, weight=None) -> torch.Tensor:
+def dice_coef(
+        preds: torch.Tensor,
+        trues: torch.Tensor,
+        alpha: float = 1.,
+        beta: float = 1.,
+        weight=None
+) -> torch.Tensor:
     """ Function returns binary dice coefficient
 
-    :param preds: Predictions of the network
-    :param trues: Ground truth labels
-    :param weight: Weight to scale
+    :param preds:   Predictions of the network
+    :param trues:   Ground truth labels
+    :param alpha:   Penalty for false-positive samples
+    :param beta:    Penalty for false-nefative samples
+    :param weight:  Weight to scale
     :return: dice score
     """
     eps = 1e-12
     if weight is not None:
         w = torch.Tensor(weight)
-        intersection = (w * preds * trues).sum()
-        union = (w * preds).sum() + (w * trues).sum()
+        tps = torch.sum(w * preds * trues, 1).sum()
+        fps = torch.sum(w * preds * (1 - trues), 1).sum()
+        fns = torch.sum(w * (1 - preds) * trues, 1).sum()
     else:
-        intersection = (preds * trues).sum()
-        union = preds.sum() + trues.sum()
-    score = (2. * intersection + eps) / (union + eps)
+        tps = torch.sum(preds * trues, 1).sum()
+        fps = torch.sum(preds * (1 - trues), 1).sum()
+        fns = torch.sum((1 - preds) * trues, 1).sum()
+
+    score = (2. * tps + eps) / (2. * tps + (alpha * fps) + (beta * fns) + eps)
     return score
 
 
-def jaccard_coef(preds, trues, weight=None) -> float:
-    """ Function returns binary jaccard coefficient (IoU)
+def jaccard_coef(
+        preds: torch.Tensor,
+        trues: torch.Tensor,
+        alpha: float = 1.,
+        beta: float = 1.,
+        weight=None
+) -> torch.Tensor:
+    """ Function returns binary dice coefficient
 
-    :param preds: Predictions of the network
-    :param trues: Ground truth labels
-    :param weight: Weight to scale
-    :return: jaccard score
+    :param preds:   Predictions of the network
+    :param trues:   Ground truth labels
+    :param alpha:   Penalty for false-positive samples
+    :param beta:    Penalty for false-nefative samples
+    :param weight:  Weight to scale
+    :return: dice score
     """
     eps = 1e-12
     if weight is not None:
         w = torch.Tensor(weight)
-        intersection = (w * preds * trues).sum()
-        union = (w * preds).sum() + (w * trues).sum()
+        tps = torch.sum(w * preds * trues, 1).sum()
+        fps = torch.sum(w * preds * (1 - trues), 1).sum()
+        fns = torch.sum(w * (1 - preds) * trues, 1).sum()
     else:
-        intersection = (preds * trues).sum()
-        union = preds.sum() + trues.sum()
-    score = (intersection + eps) / (union - intersection + eps)
+        tps = torch.sum(preds * trues, 1).sum()
+        fps = torch.sum(preds * (1 - trues), 1).sum()
+        fns = torch.sum((1 - preds) * trues, 1).sum()
+
+    score = (tps + eps) / (tps + (alpha * fps) + (beta * fns) + eps)
     return score
 
 
@@ -373,3 +396,45 @@ def reduced_focal_loss(
         loss = loss.sum(0)
 
     return loss
+
+
+def one_hot(labels: torch.Tensor,
+            num_classes: int,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None,
+            eps: Optional[float] = 1e-6) -> torch.Tensor:
+    r"""Converts an integer label 2D tensor to a one-hot 3D tensor.
+
+    Args:
+        labels (torch.Tensor) : tensor with labels of shape :math:`(N, H, W)`,
+                                where N is batch siz. Each value is an integer
+                                representing correct classification.
+        num_classes (int): number of classes in labels.
+        device (Optional[torch.device]): the desired device of returned tensor.
+         Default: if None, uses the current device for the default tensor type
+         (see torch.set_default_tensor_type()). device will be the CPU for CPU
+         tensor types and the current CUDA device for CUDA tensor types.
+        dtype (Optional[torch.dtype]): the desired data type of returned
+         tensor. Default: if None, infers data type from values.
+
+    Returns:
+        torch.Tensor: the labels in one hot tensor.
+
+    """
+    if not torch.is_tensor(labels):
+        raise TypeError("Input labels type is not a torch.Tensor. Got {}"
+                        .format(type(labels)))
+    if not len(labels.shape) == 3:
+        raise ValueError("Invalid depth shape, we expect BxHxW. Got: {}"
+                         .format(labels.shape))
+    if not labels.dtype == torch.int64:
+        raise ValueError(
+            "labels must be of the same dtype torch.int64. Got: {}" .format(
+                labels.dtype))
+    if num_classes < 1:
+        raise ValueError("The number of classes must be bigger than one."
+                         " Got: {}".format(num_classes))
+    batch_size, height, width = labels.shape
+    one_hot = torch.zeros(batch_size, num_classes, height, width,
+                          device=device, dtype=dtype)
+    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
