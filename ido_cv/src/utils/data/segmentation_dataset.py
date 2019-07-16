@@ -80,11 +80,15 @@ class BinSegDataset(Dataset):
             data = {'image': image, 'mask': mask}
             common_augs = self.common_augs(**data)
             image, mask = common_augs['image'], common_augs['mask']
+
+        # Add dilation
+        # kernel = np.ones((3, 3), np.uint8)
+        # mask = cv2.dilate(mask, kernel, iterations=2)
+
         if self.train_time_augs:
             data = {'image': image, 'mask': mask}
             augmented = self.train_time_augs(**data)
             image, mask = augmented['image'], augmented['mask']
-
 
         # image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         if len(image.shape) == 2:

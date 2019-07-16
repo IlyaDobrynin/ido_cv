@@ -24,28 +24,28 @@ LOSS_PARAMETERS = {
     'segmentation': {
         'binary': {
             "bce_jaccard": dict(
-                weight_type=None,
-                alpha=0.2
+                weight_type='area',
+                alpha=0.5,
+                fp_scale=1.,
+                fn_scale=1.
             ),
             "bce_dice": dict(
                 weight_type=None,
-                alpha=0.2
+                alpha=0.6,
+                fp_scale=0.5,
+                fn_scale=0.5
             ),
             "bce_lovasz": dict(
                 weight_type=None,
-                alpha=0.4,
+                alpha=0.5,
+                fp_scale=0.5,
+                fn_scale=0.2,
                 per_image=True
             ),
             'focal': dict(
                 gamma=0.5,
                 weight=None,
                 size_average=True
-            ),
-            'tversky': dict(
-                alpha=0.5,
-                beta=0.5,
-                gamma=1.0,
-                reduction='mean'
             )
         },
         'multi': {
@@ -64,12 +64,6 @@ LOSS_PARAMETERS = {
                 gamma=2,
                 size_average=True,
                 class_weight=None
-            ),
-            'tversky': dict(
-                alpha=0.2,
-                beta=0.8,
-                gamma=2.0,
-                weights=None
             )
         }
     },

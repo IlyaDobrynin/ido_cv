@@ -1,21 +1,8 @@
 import networkx as nx
-
-
-from collections import OrderedDict
-import gc
-import torch
 from torch import nn
-from torch.nn import functional as F
 from ..nn_blocks.classic_unet_blocks import DecoderBlock
 from ..nn_blocks.classic_unet_blocks import DecoderBlockResidual
-from ..nn_blocks.classic_unet_blocks import ResidualBlock
-from ..nn_blocks.se_blocks import SCSEBlock
 from ..nn_blocks.encoders import EncoderCommon
-from ..nn_blocks.common_blocks import Conv
-from ..nn_blocks.common_blocks import ConvBnRelu
-from ..nn_blocks.pan_blocks import FPABlock
-from ..nn_blocks.pan_blocks import GAUBlockUnet
-from ..nn_blocks.vortex_block import VortexPooling
 from torch.nn import functional as F
 
 
@@ -66,16 +53,18 @@ class UnetPlusPlusFactory(EncoderCommon):
             kernel_size=1
         )
 
-    def get_encoders_dict(self):
+    def _get_encoders_dict(self):
         encoders_dict = {}
         encoders_list = self.encoder_layers
         encoder_filter_sizes = self.encoder_filters
         for i, encoder_block in enumerate(encoders_list):
-            encoders_dict["X_{:d}_0".format(i)] = {"instance": encoder_block, "output_channels_num": encoder_filter_sizes[i]}
-
+            encoders_dict[f"X_{i}_0"] = dict(
+                instance=encoder_block,
+                output_channels_num=encoder_filter_sizes[i]
+            )
         return encoders_dict
 
-    def get_graph(self):
+    def _get_graph(self):
         depth = len(self._encoders_dict)
         graph = nx.DiGraph()
 

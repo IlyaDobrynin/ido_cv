@@ -115,7 +115,7 @@ def get_weight(trues, weight_type=0):
     return weights
 
 
-def lovasz_hinge(logits, labels, per_image=True, ignore=None):
+def lovasz_hinge(preds, trues, per_image=True, ignore=None):
     """ Binary Lovasz hinge loss
 
       logits: [B, H, W] Variable, logits at each pixel (between -infty and +infty)
@@ -129,10 +129,10 @@ def lovasz_hinge(logits, labels, per_image=True, ignore=None):
                 *flatten_binary_scores(
                     log.unsqueeze(0), lab.unsqueeze(0), ignore
                 )
-            ) for log, lab in zip(logits, labels))
+            ) for log, lab in zip(preds, trues))
         return mean(loss)
     else:
-        loss = lovasz_hinge_flat(*flatten_binary_scores(logits, labels, ignore))
+        loss = lovasz_hinge_flat(*flatten_binary_scores(preds, trues, ignore))
     return loss
 
 

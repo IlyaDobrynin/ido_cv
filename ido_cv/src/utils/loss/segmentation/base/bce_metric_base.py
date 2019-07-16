@@ -1,5 +1,7 @@
 import torch
 from torch import nn
+from torch.nn import functional as F
+from torch.nn import BCELoss, BCEWithLogitsLoss
 from ...loss_utils import get_weight
 from ...loss_utils import jaccard_coef
 from ...loss_utils import dice_coef
@@ -25,7 +27,6 @@ class BceMetricBase(nn.Module):
         self.fp_scale = fp_scale
         self.fn_scale = fn_scale
         self.alpha = alpha
-        self.bce_loss = nn.BCEWithLogitsLoss()
         self.per_image = per_image
         self.ignore_class = ignore_class
 
@@ -33,8 +34,39 @@ class BceMetricBase(nn.Module):
             self,
             preds: torch.Tensor,
             trues: torch.Tensor,
-            metric_name: str,
+            metric_name: str
     ):
+        # diff_coef = F.pairwise_distance(preds, trues)
+        diff_coef = 1 + F.pairwise_distance(preds, trues).mean()
+        # print(diff_coef)
+
+        if self.weight_type == 'area':
+            area = trues.shape[2] * trues.shape[2]
+            weight = 1 - torch.log((torch.sum(trues.contiguous().view(preds.size(0), -1), dim=1) / area) + 1e-12)
+
+            if metric_name == 'lovasz':
+                self.bce_loss = BCEWithLogitsLoss(reduction='none')
+            elif metric_name in ['dice', 'jaccard']:
+                self.bce_loss = BCELoss(reduction='none')
+            else:
+                raise NotImplementedError(
+                    f"Metric {metric_name} doesn't implemented. "
+                    f"Should be 'jaccard', 'dice', 'lovasz' or None."
+                )
+            bce_loss = self.bce_loss(input=preds, target=trues)
+            bce_loss = torch.mean(bce_loss.contiguous().view(preds.size(0), -1), dim=1)
+            bce_loss = (bce_loss * weight).mean() * diff_coef
+        elif self.weight_type is None:
+            if metric_name == 'lovasz':
+                self.bce_loss = BCEWithLogitsLoss()
+            elif metric_name in ['dice', 'jaccard']:
+                self.bce_loss = BCELoss()
+            else:
+                raise NotImplementedError(
+                    f"Metric {metric_name} doesn't implemented. "
+                    f"Should be 'jaccard', 'dice', 'lovasz' or None."
+                )
+            bce_loss = self.bce_loss(input=preds, target=trues)
 
         if metric_name == 'lovasz':
             if self.per_image is None:
@@ -42,49 +74,38 @@ class BceMetricBase(nn.Module):
                     f"If metric parameter is lovasz, parameter per_image should be set."
                 )
 
-        bce_loss = self.bce_loss(preds, trues)
-
-        metric_target = (trues == 1).float()
-        metric_output = torch.sigmoid(preds)
-        # Weight estimation
-        if self.weight_type:
-            weights = get_weight(trues=trues, weight_type=self.weight_type)
-        else:
-            weights = None
-        if metric_name:
-            if metric_name == 'jaccard':
-                metric_coef = jaccard_coef(
-                    metric_target,
-                    metric_output,
-                    alpha=self.fp_scale,
-                    beta=self.fn_scale,
-                    weight=weights
-                )
-            elif metric_name == 'dice':
-                metric_coef = dice_coef(
-                    metric_target,
-                    metric_output,
-                    alpha=self.fp_scale,
-                    beta=self.fn_scale,
-                    weight=weights
-                )
-            elif metric_name == 'lovasz':
-                metric_coef = lovasz_hinge(
-                    metric_output, metric_target, self.per_image, self.ignore_class
-                )
-            else:
-                raise NotImplementedError(
-                    f"Metric {metric_name} doesn't implemented. "
-                    f"Should be 'jaccard', 'dice', 'lovasz' or None."
-                )
-            if metric_name == 'lovasz':
-                loss = self.alpha * bce_loss + (1 - self.alpha) * metric_coef
-            else:
-                loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
-        else:
-            raise ValueError(
-                f"Wrong metric_name: {metric_name}. "
-                f"Should be 'dice', 'jaccard' or 'lovasz'."
+        common_parameters = dict(
+            preds=preds,
+            trues=trues
+        )
+        if metric_name == 'jaccard':
+            metric_coef = jaccard_coef(
+                alpha=self.fp_scale,
+                beta=self.fn_scale,
+                # weight=weight,
+                **common_parameters
             )
+        elif metric_name == 'dice':
+            metric_coef = dice_coef(
+                alpha=self.fp_scale,
+                beta=self.fn_scale,
+                # weight=weight,
+                **common_parameters
+            )
+        elif metric_name == 'lovasz':
+            metric_coef = lovasz_hinge(
+                per_image=self.per_image,
+                ignore=self.ignore_class,
+                **common_parameters
+            )
+        else:
+            raise NotImplementedError(
+                f"Metric {metric_name} doesn't implemented. "
+                f"Should be 'jaccard', 'dice', 'lovasz' or None."
+            )
+        if metric_name == 'lovasz':
+            loss = self.alpha * bce_loss + (1 - self.alpha) * metric_coef
+        else:
+            loss = self.alpha * bce_loss - (1 - self.alpha) * torch.log(metric_coef)
 
         return loss
