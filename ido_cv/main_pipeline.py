@@ -144,11 +144,11 @@ class MainPipeline:
 
     def _get_dataloaders(self) -> Dict:
         default_dataloaders_schema = {
-            'find_lr_dataloader':   ['train_path', True],
-            'train_dataloader':     ['train_path', True],
-            'valid_dataloader':     ['valid_path', True],
-            'holdout_dataloader':   ['holdout_path', True],
-            'test_dataloader':      ['test_path', False]
+            'find_lr_dataloader':   ['train_path', True, self._hyperparameters_dict['train_time_augs']],
+            'train_dataloader':     ['train_path', True, self._hyperparameters_dict['train_time_augs']],
+            'valid_dataloader':     ['valid_path', True, self._hyperparameters_dict['train_time_augs']],
+            'holdout_dataloader':   ['holdout_path', True, self._hyperparameters_dict['train_time_augs']],
+            'test_dataloader':      ['test_path', False, self._hyperparameters_dict['train_time_augs']]
         }
 
         if self._hyperparameters_dict['dataloaders_schema'] is None:

@@ -1,3 +1,4 @@
+from typing import List, Union
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -8,9 +9,9 @@ from sklearn.metrics import accuracy_score
 
 
 def get_opt_threshold(
-        trues:          np.ndarray,
-        preds:          np.ndarray,
-        metric_name:    str,
+        trues: Union[List, np.ndarray],
+        preds: Union[List, np.ndarray],
+        metric_name: str,
         threshold_min:  float = 0.1,
         include_empty: bool = False
 ) -> tuple:
@@ -132,9 +133,10 @@ def torch_metric(
 
 
 def numpy_metric_per_image(
-        trues: np.ndarray,
-        preds: np.ndarray,
-        metric_name: str
+        trues: Union[List, np.ndarray],
+        preds: Union[List, np.ndarray],
+        metric_name: str,
+        include_empty: bool = True
 ) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)
 
@@ -154,8 +156,13 @@ def numpy_metric_per_image(
             metrics.append(0)
             continue
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) == 0:
-            metrics.append(1)
+            if include_empty:
+                metrics.append(1)
             continue
+
+        # from ..image_utils import draw_images
+        # if np.mean(true) > 0:
+        #     draw_images([true, pred])
 
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)
@@ -182,8 +189,8 @@ def numpy_metric_per_image(
 
 
 def numpy_metric(
-        trues: np.ndarray,
-        preds: np.ndarray,
+        trues: Union[List, np.ndarray],
+        preds: Union[List, np.ndarray],
         metric_name: str,
 ) -> np.ndarray:
     """ Function returns metric (dice, jaccard or mean IoU)

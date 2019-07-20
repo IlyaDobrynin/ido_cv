@@ -32,8 +32,8 @@ LOSS_PARAMETERS = {
             "bce_dice": dict(
                 weight_type=None,
                 alpha=0.6,
-                fp_scale=0.5,
-                fn_scale=0.5
+                fp_scale=1.,
+                fn_scale=1.
             ),
             "bce_lovasz": dict(
                 weight_type=None,

@@ -179,7 +179,7 @@ class BaseSegmentationMetric(AbstractMetric):
             metric = numpy_metric_per_image(
                 trues=trues,
                 preds=preds,
-                metric_name=metric_name,
+                metric_name=metric_name
             )
         elif device == 'gpu':
             metric = torch_metric(

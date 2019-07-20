@@ -36,10 +36,7 @@ class BceMetricBase(nn.Module):
             trues: torch.Tensor,
             metric_name: str
     ):
-        # diff_coef = F.pairwise_distance(preds, trues)
         diff_coef = 1 + F.pairwise_distance(preds, trues).mean()
-        # print(diff_coef)
-
         if self.weight_type == 'area':
             area = trues.shape[2] * trues.shape[2]
             weight = 1 - torch.log((torch.sum(trues.contiguous().view(preds.size(0), -1), dim=1) / area) + 1e-12)
