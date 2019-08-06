@@ -1,0 +1,8 @@
+backbone: 'dilated_resnet34'
+num_classes: 1
+pretrained: 'imagenet'
+unfreeze_encoder: True
+num_input_channels: 3
+bn_type: 'default'
+residual: False
+se_decoder: False
