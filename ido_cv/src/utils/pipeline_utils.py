@@ -210,8 +210,8 @@ def validate_test(
             raise ValueError(
                 f"Wrong metrics_dict parameter: {metrics_dict}."
             )
-        masks_t = np.asarray([pred[3] for pred in predictions])
         masks_p = np.asarray([pred[2] for pred in predictions])
+        masks_t = np.asarray([pred[3] for pred in predictions])
 
         # Get metrics for binary segmentation
         if mode == 'binary':
@@ -283,7 +283,6 @@ def _get_true_labels(
     """
 
     if task == 'segmentation':
-        # Get predictions for binary segmentation
         if mode == 'binary':
             true_labels = np.squeeze(
                 np.moveaxis(data_batch[1].data.numpy(), 1, -1), -1

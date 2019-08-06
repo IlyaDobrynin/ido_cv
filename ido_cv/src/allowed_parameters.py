@@ -55,7 +55,7 @@ LOSS_PARAMETERS = {
             ),
             "bce_dice": dict(
                 alpha=0.3,
-                # class_weights=[0.1, 0.8, 0.8, 0.8, 0.2, 0.2, 0.1, 0.1, 0.2, 0.2, 0.1]
+                # class_weights=[1, 1, 1, 1, 1]
             ),
             "lovasz": dict(
                 ignore_class=0

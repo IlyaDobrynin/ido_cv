@@ -148,6 +148,7 @@ class Pipeline(AbstractPipeline):
             dataset_class: Dataset = None,
             path_to_dataset: str = None,
             data_file: pd.DataFrame = None,
+            names: List = None,
             batch_size: int = 1,
             is_train: bool = True,
             show_samples: bool = False,
@@ -161,6 +162,7 @@ class Pipeline(AbstractPipeline):
         :param dataset_class:   Dataset class
         :param path_to_dataset: Path to the images
         :param data_file:       Data file
+        :param names:           Names of files to include in dataloader
         :param batch_size:      Size of data minibatch
         :param is_train:        Flag to specify dataloader type (train or test)
         :param show_samples:    Flag to show dataloader samples
@@ -194,6 +196,7 @@ class Pipeline(AbstractPipeline):
                 dataset_parameters = dict(
                     data_path=path_to_dataset,
                     data_file=data_file,
+                    names=names,
                     train=is_train,
                     common_augs=common_augs,
                     train_time_augs=train_time_augs,
@@ -826,5 +829,16 @@ class Pipeline(AbstractPipeline):
 
             # Get visualization for multiclass segmentation task
             else:  # self.mode == 'multi'
-                for name, image, mask in zip(names, images, masks):
-                    draw_images([image, mask])
+                for i in range(len(names)):  # name, image, mask in zip(names, images, masks):
+                    name = names[i]
+                    print(name)
+                    image = images[i]
+                    mask_p = masks[i]
+                    mask_p_ = np.zeros(shape=mask_p.shape[:-1])
+                    for i in range(1, mask_p.shape[-1]):
+                        mask_p_ += mask_p[..., i] > 0.5
+
+                    import cv2
+                    path = r'/mnt/Disk_F/Programming/competitions/proj_kaggle_severstal/data/segmentation/sliced_dataset/holdout/masks'
+                    mask_t = cv2.imread(os.path.join(path, name), 0)
+                    draw_images([image, mask_t, mask_p_])

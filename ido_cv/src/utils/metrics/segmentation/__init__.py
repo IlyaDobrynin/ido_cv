@@ -168,7 +168,7 @@ class BaseSegmentationMetric(AbstractMetric):
 
     @staticmethod
     def _get_metric_value(trues: torch.Tensor, preds: torch.Tensor, metric_name: str,
-                          threshold: float, device: str) -> float:
+                          threshold: float, device: str) -> np.ndarray:
         trues = trues.long()
         preds = (preds > threshold).long()
 

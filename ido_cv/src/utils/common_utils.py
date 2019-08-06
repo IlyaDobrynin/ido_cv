@@ -28,7 +28,7 @@ def rle_encode(image: np.ndarray, mode: str = 'absolute') -> list:
     Returns run length as string formated
     """
     image_ = np.copy(image)
-    pixels = image_.flatten()
+    pixels = image_.T.flatten()
     pixels = np.concatenate([[0], pixels, [0]])
     # pixels = np.concatenate([[0], pixels])
     # print(pixels)
@@ -86,7 +86,7 @@ def rle_decode(rle_list: list, shape: tuple, fill_value: int = 1, mode: str = 'a
     for lo, hi in zip(starts, ends):
         img[lo:hi] = fill_value
 
-    return img.reshape(shape)
+    return img.reshape(shape).T
 
 
 def get_mean_and_std(dataset, max_load=10000):

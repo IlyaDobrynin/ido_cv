@@ -4,6 +4,7 @@ Module implements functions for work with dataset
 
 """
 import os
+from typing import List
 import cv2
 import numpy as np
 import pandas as pd
@@ -174,6 +175,7 @@ class MultSegDataset(Dataset):
             train: bool,
             add_depth: bool = False,
             data_path: str = None,
+            names: List = None,
             data_file: pd.DataFrame = None,
             common_augs=None,
             train_time_augs=None,
@@ -185,10 +187,16 @@ class MultSegDataset(Dataset):
         self.show_sample = show_sample
         if data_path is not None:
             self.data_path = data_path
-            self.file_names = os.listdir(os.path.join(self.data_path, 'images'))
+            if names is None:
+                self.file_names = os.listdir(os.path.join(self.data_path, 'images'))
+            else:
+                self.file_names = names
             self.from_path = True
         elif data_file is not None:
-            self.file_names = data_file['names'].values.tolist()
+            if names is None:
+                self.file_names = data_file['names'].values.tolist()
+            else:
+                self.file_names = names
             self.data_file = data_file
             self.from_path = False
 
@@ -209,7 +217,7 @@ class MultSegDataset(Dataset):
             image = self.data_file[self.data_file['names'] == fname]['images'].values[0]
         if self.train:
             if self.from_path:
-                mask = cv2.imread(os.path.join(self.data_path, f'masks/{fname}'))
+                mask = cv2.imread(os.path.join(self.data_path, f'masks/{fname[:-4]}.png'))
                 mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
             else:
                 mask = self.data_file[self.data_file['names'] == fname]['masks'].values[0]

@@ -37,8 +37,6 @@ class MainPipeline:
             # Dataloader parameters
             workers=parameters['workers'],
             batch_size=parameters['batch_size'],
-            common_augs=parameters['common_augs'],
-            train_time_augs=parameters['train_time_augs'],
             show_samples=parameters['show_samples'],
             shuffle_train=parameters['shuffle_train'],
             dataloaders_schema=parameters['dataloaders_schema'],
@@ -143,37 +141,28 @@ class MainPipeline:
         return model_data
 
     def _get_dataloaders(self) -> Dict:
-        default_dataloaders_schema = {
-            'find_lr_dataloader':   ['train_path', True, self._hyperparameters_dict['train_time_augs']],
-            'train_dataloader':     ['train_path', True, self._hyperparameters_dict['train_time_augs']],
-            'valid_dataloader':     ['valid_path', True, self._hyperparameters_dict['train_time_augs']],
-            'holdout_dataloader':   ['holdout_path', True, self._hyperparameters_dict['train_time_augs']],
-            'test_dataloader':      ['test_path', False, self._hyperparameters_dict['train_time_augs']]
-        }
-
         if self._hyperparameters_dict['dataloaders_schema'] is None:
-            self._hyperparameters_dict['dataloaders_schema'] = default_dataloaders_schema
+            raise ValueError(
+                f"Provide dataloaders_schema!"
+            )
 
         print(f"Paths:")
-        for k, v in default_dataloaders_schema.items():
-            print(f"{k[:-11]}: {self._hyperparameters_dict[v[0]]}")
+        for k, v in self._hyperparameters_dict['dataloaders_schema'].items():
+            print(f"{k[:-11]}: {v['path']}")
 
         dataloaders_dict = dict()
         for loader_type, parameters in self._hyperparameters_dict['dataloaders_schema'].items():
-            # if loader_type == 'find_lr_dataloader':
-            #     batch_size = 5
-            # else:
             batch_size = self._hyperparameters_dict['batch_size']
-
             dataloader = self.pipeline_object.get_dataloaders(
-                path_to_dataset=self._hyperparameters_dict[parameters[0]],
+                path_to_dataset=parameters['path'],
+                names=parameters['names'],
                 workers=self._hyperparameters_dict['workers'],
                 batch_size=batch_size,
-                is_train=parameters[1],
+                is_train=parameters['is_train'],
                 show_samples=self._hyperparameters_dict['show_samples'],
                 shuffle=self._hyperparameters_dict['shuffle_train'],
-                common_augs=self._hyperparameters_dict['common_augs'],
-                train_time_augs=self._hyperparameters_dict['train_time_augs']
+                common_augs=parameters['common_augs'],
+                train_time_augs=parameters['train_time_augs']
             )
             dataloaders_dict[loader_type] = dataloader
         return dataloaders_dict

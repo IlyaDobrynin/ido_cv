@@ -148,6 +148,7 @@ def numpy_metric_per_image(
 
     smooth = 1e-12
     metrics = []
+
     for true, pred in zip(trues, preds):
         if np.count_nonzero(true) == 0 and np.count_nonzero(pred) > 0:
             metrics.append(0)
@@ -159,11 +160,6 @@ def numpy_metric_per_image(
             if include_empty:
                 metrics.append(1)
             continue
-
-        # from ..image_utils import draw_images
-        # if np.mean(true) > 0:
-        #     draw_images([true, pred])
-
         true_bool = np.asarray(true, dtype=bool)
         pred_bool = np.asarray(pred, dtype=bool)
         intersection = np.sum(np.logical_and(true, pred).astype(np.uint8))

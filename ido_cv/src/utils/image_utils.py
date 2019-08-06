@@ -3,6 +3,7 @@
     Perform image transformations
 """
 import math
+from typing import Tuple
 import random
 import cv2
 import numpy as np
@@ -10,7 +11,6 @@ import torch
 from skimage import util
 from skimage.morphology import remove_small_holes, remove_small_objects
 import matplotlib.pyplot as plt
-# plt.rcParams['figure.figsize'] = (15.0, 12.0)
 
 
 def pad(img, boxes=None, mode='constant'):
@@ -231,11 +231,16 @@ def center_crop(img, boxes, size):
     return img, boxes
 
 
-def draw_images(images_list: list, orient: str = 'horizontal', figsize: tuple = (10, 15)):
+def draw_images(
+        images_list: list,
+        orient: str = 'horizontal',
+        figsize: tuple = (10, 15)
+):
     """ Function draws images from images_list
 
     :param images_list: List of numpy.ndarray images
     :param orient: How to orient images ('horisontal' or 'vertical')
+    :param figsize: Size of the image
     :return:
     """
     n_images = len(images_list)
@@ -251,6 +256,7 @@ def draw_images(images_list: list, orient: str = 'horizontal', figsize: tuple = 
             )
         ax.imshow(image)
     plt.show()
+
 
 def draw_image_boxes(image, boxes, labels, scores):
     draw = image.copy()
@@ -294,11 +300,11 @@ def convert_multilabel_mask(
             out_mask[matching] = i + 1
     elif how == 'class2rgb':
         out_mask = np.zeros(shape=(mask.shape[0], mask.shape[1], 3), dtype=np.uint8)
-        for cls in range(0, n_classes):
+        for cls in range(1, n_classes + 1):
             if cls == ignore_class:
                 continue
             matching = mask[:, :] == cls
-            out_mask[matching, :] = label_colors[cls - 1]
+            out_mask[matching, :] = label_colors[cls]
     else:
         raise ValueError(
             f"Wrong parameter how: {how}. Should be 'rgb2class or class2rgb."
@@ -375,3 +381,110 @@ def make_dilate(image: np.ndarray, kernel_size=(100, 1)):
     kernel = np.ones(kernel_size, np.uint8)
     dilation = cv2.dilate(image, kernel).astype(np.uint8)
     return dilation
+
+
+def window_slice_image(
+        image: np.ndarray,
+        interpolation=None,
+        border_mode=None,
+        window_size: int = 256,
+        overlap: int = 64,
+        resize_method: str = 'pad'
+) -> Tuple:
+    """ Function for slicing images with overlap
+
+    :param image: Image to slice
+    :param interpolation: Interpolation method for resizing
+    :param window_size: Size of the slice window
+    :param overlap: Overlap size
+    :return:
+    """
+    slice_step = window_size - overlap
+    add_h = 0 if (image.shape[0] - window_size) % slice_step == 0 else 1
+    add_w = 0 if (image.shape[1] - window_size) % slice_step == 0 else 1
+
+    new_h = window_size if image.shape[0] <= window_size else \
+        int(window_size + (((image.shape[0] - window_size) // slice_step) + add_h) * (window_size - overlap))
+    new_w = window_size if image.shape[1] <= window_size else \
+        int(window_size + (((image.shape[1] - window_size) // slice_step) + add_w) * (window_size - overlap))
+
+    if resize_method == 'resize':
+        image = cv2.resize(image, dsize=(new_w, new_h), interpolation=interpolation)
+    elif resize_method == 'pad':
+        top = int(np.abs(np.ceil((image.shape[0] - new_h) / 2)))
+        bottom = int(np.abs(np.floor((image.shape[0] - new_h) / 2)))
+        left = int(np.abs(np.ceil((image.shape[1] - new_w) / 2)))
+        right = int(np.abs(np.floor((image.shape[1] - new_w) / 2)))
+        image = cv2.copyMakeBorder(
+            src=image,
+            top=top, bottom=bottom, left=left, right=right,
+            borderType=border_mode
+        )
+    else:
+        raise ValueError(
+            f"Wrong resize method: {resize_method}. "
+            f"Should be 'pad' or 'resize'."
+        )
+    image_size = image.shape
+    num_h_sliced = 1 if new_h == window_size else int(((image.shape[0] - window_size) // slice_step) + 1)
+    num_w_sliced = 1 if new_w == window_size else int(((image.shape[1] - window_size) // slice_step) + 1)
+    num_sliced_images = num_h_sliced * num_w_sliced
+
+    if len(image.shape) == 2:
+        sliced_images = np.ndarray(
+            shape=(num_sliced_images, window_size, window_size),
+            dtype=np.uint8
+        )
+        counter = 0
+        for i, height in enumerate(range(0, image.shape[0] - slice_step, slice_step)):
+            for j, width in enumerate(range(0, image.shape[1] - slice_step, slice_step)):
+                sliced_image = image[height:height + window_size, width:width + window_size]
+                sliced_images[counter, :, :] = sliced_image
+                counter += 1
+    elif len(image.shape) == 3:
+        sliced_images = np.ndarray(
+            shape=(num_sliced_images, window_size, window_size, image.shape[-1]),
+            dtype=np.uint8
+        )
+        for ch in range(image.shape[-1]):
+            counter = 0
+            for i, height in enumerate(range(0, image.shape[0] - slice_step, slice_step)):
+                for j, width in enumerate(range(0, image.shape[1] - slice_step, slice_step)):
+                    sliced_image = image[height:height + window_size, width:width + window_size, ch]
+                    sliced_images[counter, :, :, ch] = sliced_image
+                    counter += 1
+    else:
+        raise ValueError(
+            f"Wrong shape of image: {image.shape}"
+        )
+    return sliced_images, image_size
+
+
+def merge_image(
+        images: np.ndarray,
+        overlap: int,
+        image_size: Tuple
+):
+    slice_step = images.shape[1] - overlap
+
+    merged_image = np.ndarray(shape=image_size, dtype=np.uint8)
+
+    num_h_sliced = 1 if image_size[0] == images.shape[1] else \
+        int(((image_size[0] - images.shape[1]) // slice_step) + 1)
+    num_w_sliced = 1 if  image_size[1] == images.shape[2] else \
+        int(((image_size[1] - images.shape[2]) // slice_step) + 1)
+    counter = 0
+    for i in range(num_h_sliced):
+        for j in range(num_w_sliced):
+            st_h = i * (images.shape[1] - overlap)
+            st_w = j * (images.shape[2] - overlap)
+            if len(images.shape) == 3:
+                merged_image[st_h:st_h + images.shape[1], st_w:st_w + images.shape[2]] = images[counter, ...]
+            elif len(images.shape) == 4:
+                merged_image[st_h:st_h + images.shape[1], st_w:st_w + images.shape[2], :] = images[counter, ...]
+            else:
+                raise ValueError(
+                    f"Wrong images shape: {images.shape}"
+                )
+            counter += 1
+    return merged_image
